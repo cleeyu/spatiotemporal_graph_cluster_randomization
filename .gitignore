@@ -1,2 +1,3 @@
 results/
 helpers/__pycache__/
+*.pyc 
