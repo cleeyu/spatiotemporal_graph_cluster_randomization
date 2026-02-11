@@ -70,37 +70,12 @@ def exposure_mapping(
     Returns:
         dict containing exposure_1_array, exposure_0_array, dof, and num_spatial_neighbors
     """
-    adj_matrix = adj_matrix - np.eye(adj_matrix.shape[0])
-    time_adj_matrix = time_adj_matrix - np.eye(time_adj_matrix.shape[0])
     treated_neighb = np.transpose(np.tensordot(np.tensordot(adj_matrix, treatment_array, axes=([1],[0])), time_adj_matrix.T, axes=([1],[0])), axes=(0, 2, 1))
+    treated_neighb -= treatment_array
     total_neighb = np.transpose(np.tensordot(np.tensordot(adj_matrix, np.ones(treatment_array.shape), axes=([1],[0])), time_adj_matrix.T, axes=([1],[0])), axes=(0, 2, 1))
+    total_neighb -= np.ones(treatment_array.shape)
     exposure_1_array = treatment_array * (treated_neighb >= (1-delta)*total_neighb).astype(int)  # 1 if self treated AND (1-delta) fraction of neighbors are treated
     exposure_0_array = (1 - treatment_array) * (treated_neighb <= delta*total_neighb).astype(int)  # 1 if self control AND (1-delta) fraction of neighbors are untreated
-    return {
-        "exposure_1": exposure_1_array,
-        "exposure_0": exposure_0_array,
-        "dof": total_neighb,  # for debugging
-    }
-
-def exposure_mapping_old(
-        treatment_array: np.ndarray,
-        adj_matrix: np.ndarray,
-        time_adj_matrix: np.ndarray,
-        delta: float=0
-        ) -> Dict:
-    """
-    Compute spatio-temporal exposure mapping.
-    Input:
-        arms_array: N x T binary matrix of treatment assignments (0 or 1)
-        adj_map: Adjacency map where adj_map[i] = list of neighbors of node i
-        recency: int, temporal window size r (default=1)
-    Returns:
-        dict containing exposure_1_array, exposure_0_array, dof, and num_spatial_neighbors
-    """ 
-    treated_neighb = np.transpose(np.tensordot(np.tensordot(adj_matrix, treatment_array, axes=([1],[0])), time_adj_matrix.T, axes=([1],[0])), axes=(0, 2, 1))
-    total_neighb = np.transpose(np.tensordot(np.tensordot(adj_matrix, np.ones(treatment_array.shape), axes=([1],[0])), time_adj_matrix.T, axes=([1],[0])), axes=(0, 2, 1))
-    exposure_1_array = (treated_neighb >= (1-delta)*total_neighb).astype(int)  # 1 if (1-delta) fraction of neighbors are treated
-    exposure_0_array = (treated_neighb <= delta*total_neighb).astype(int)  # 1 if (1-delta) fraction of neighbors are untreated
     return {
         "exposure_1": exposure_1_array,
         "exposure_0": exposure_0_array,
