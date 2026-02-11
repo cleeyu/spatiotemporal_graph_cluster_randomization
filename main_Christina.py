@@ -19,10 +19,10 @@ KAPPA = 3                      # Kappa parameter for interference graph generati
 
 # parameters: Design and estimator 
 T = 1000                        # Number of time periods
-TIME_BLOCK_LENGTH = 4          # Length of time blocks for cluster randomization
+TIME_BLOCK_LENGTH = 100          # Length of time blocks for cluster randomization
 NUM_STATES = 3                 # Number of states in the MDP
 DELTA = 0.05                   # Delta parameter for exposure computation
-RECENCY = 3                    # Recency parameter for exposure computation
+RECENCY = 20                    # Recency parameter for exposure computation
 
 # parameters: MDP 
 C_LAZY = 0.1                   # Laziness parameter
@@ -201,14 +201,31 @@ def main():
 
     print("\nDone with simulation, computing HT and Hajek estimates")
 
+    # CHECK with deteriministic rewards set to be all_0_mean for all control units and all_1_mean for all treated units
+    ht_fake_results = stats_helpers.horvitz_thompson(all_0_mean * (1- arms_array) + all_1_mean * arms_array,exposure_results['exposure_1'],exposure_results['exposure_0'],propensity_1_array,propensity_0_array)
+    ate_estimate_fake_ht = ht_fake_results['ate_estimate_ht']
+
+    print("\n" + "="*60 + "\nFAKE REWARDS HORVITZ-THOMPSON ESTIMATES\n" + "="*60)
+    mean_fake_HT_est, var_fake_HT_est = ate_estimate_fake_ht.mean(), ate_estimate_fake_ht.var()
+    print(f"Mean HT estimate: {mean_fake_HT_est:.4f}")
+    print(f"Bias: {mean_fake_HT_est - true_ATE:.4f}")
+    print(f"Variance of HT estimate: {var_fake_HT_est:.4f}")
+    print(f"Standard deviation: {np.sqrt(var_fake_HT_est):.4f}")
+
+    # CHECK with the vanilla HT, using exposure mapping as W and 1-W, and ground truth 0.5 propensity scores
+    ht_vanilla_results = stats_helpers.horvitz_thompson(rewards,arms_array,1-arms_array,0.5*np.ones(propensity_1_array.shape),0.5*np.ones(propensity_0_array.shape))
+    ate_estimate_vanilla_ht = ht_vanilla_results['ate_estimate_ht']
+
+    print("\n" + "="*60 + "\nVANILLA REWARDS HORVITZ-THOMPSON ESTIMATES\n" + "="*60)
+    mean_vanilla_HT_est, var_vanilla_HT_est = ate_estimate_vanilla_ht.mean(), ate_estimate_vanilla_ht.var()
+    print(f"Mean HT estimate: {mean_vanilla_HT_est:.4f}")
+    print(f"Bias: {mean_vanilla_HT_est - true_ATE:.4f}")
+    print(f"Variance of HT estimate: {var_vanilla_HT_est:.4f}")
+    print(f"Standard deviation: {np.sqrt(var_vanilla_HT_est):.4f}")
+
+    # HT with interference exposure mapping
     ht_results = stats_helpers.horvitz_thompson(rewards,exposure_results['exposure_1'],exposure_results['exposure_0'],propensity_1_array,propensity_0_array)
     ate_estimate_ht = ht_results['ate_estimate_ht']
-
-    hajek_results = stats_helpers.hajek(rewards,exposure_results['exposure_1'],exposure_results['exposure_0'],propensity_1_array,propensity_0_array)
-    ate_estimate_hajek = hajek_results['ate_estimate_hajek']
-
-    # Calculate total simulation runtime
-    total_runtime_seconds = time.time() - simulation_start_time
     
     print("\n" + "="*60 + "\nHORVITZ-THOMPSON ESTIMATES\n" + "="*60)
     mean_HT_est, var_HT_est = ate_estimate_ht.mean(), ate_estimate_ht.var()
@@ -217,6 +234,10 @@ def main():
     print(f"Variance of HT estimate: {var_HT_est:.4f}")
     print(f"Standard deviation: {np.sqrt(var_HT_est):.4f}")
 
+    # Hajek with interference exposure mapping
+    hajek_results = stats_helpers.hajek(rewards,exposure_results['exposure_1'],exposure_results['exposure_0'],propensity_1_array,propensity_0_array)
+    ate_estimate_hajek = hajek_results['ate_estimate_hajek']
+
     print("\n" + "="*60 + "\nHAJEK ESTIMATES\n" + "="*60)
     mean_Hajek_est, var_Hajek_est = ate_estimate_hajek.mean(), ate_estimate_hajek.var()
     print(f"Mean HT estimate: {mean_Hajek_est:.4f}")
@@ -224,6 +245,8 @@ def main():
     print(f"Variance of HT estimate: {var_Hajek_est:.4f}")
     print(f"Standard deviation: {np.sqrt(var_Hajek_est):.4f}")
 
+    # Calculate total simulation runtime
+    total_runtime_seconds = time.time() - simulation_start_time
     print(f"Total simulation runtime: {total_runtime_seconds:.2f} seconds ({total_runtime_seconds/60:.2f} minutes)")
     utils.print_time()
 
@@ -265,7 +288,7 @@ def main():
             rewards_array=sim_results["rewards"][:,:,iter_idx],
             ht_result=ate_estimate_ht,
             true_ATE=true_ATE,
-            print_freq=int(num_iter_est/5)
+            print_freq=int(num_iter_est/1)
         )    
 
     # Save results with human-readable column names

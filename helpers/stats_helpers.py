@@ -32,6 +32,28 @@ def generate_cluster_treatments(
 # =============================================================================
 # PROPENSITY SCORE (EXPOSURE PROB)
 # =============================================================================
+def exposure_mapping_vanilla(
+        treatment_array: np.ndarray,
+        adj_matrix: np.ndarray,
+        time_adj_matrix: np.ndarray,
+        delta: float=0
+        ) -> Dict:
+    """
+    Compute spatio-temporal exposure mapping.
+    Input:
+        arms_array: N x T binary matrix of treatment assignments (0 or 1)
+        adj_map: Adjacency map where adj_map[i] = list of neighbors of node i
+        recency: int, temporal window size r (default=1)
+    Returns:
+        dict containing exposure_1_array, exposure_0_array, dof, and num_spatial_neighbors
+    """
+    exposure_1_array = treatment_array 
+    exposure_0_array = (1 - treatment_array) 
+    return {
+        "exposure_1": exposure_1_array,
+        "exposure_0": exposure_0_array,
+        "dof": np.ones(treatment_array.shape),  # for debugging
+    }
 
 def exposure_mapping(
         treatment_array: np.ndarray,
@@ -131,20 +153,16 @@ def horvitz_thompson(
         propensity_1_array: np.ndarray,
         propensity_0_array: np.ndarray) -> Dict:
 
-    propensity_0_array = propensity_0_array[:,:,np.newaxis]
-    Y_hat_0 = np.zeros((np.shape(rewards_array)))
-    np.divide(exposure_0_array * rewards_array, propensity_0_array, out = Y_hat_0, where=propensity_0_array != 0)   
-    print("Number of entries violating zero arm 0 propensity score: {}".format(np.sum(exposure_0_array * (propensity_0_array == 0))))
-    print("Y_hat_0 has {} NaN values".format(np.sum(np.isnan(Y_hat_0))))
- 
+    (n,T,num_sims) = rewards_array.shape
+
+    HT_weights_0 = np.zeros((np.shape(propensity_0_array)))
+    np.divide(1, propensity_0_array, out = HT_weights_0, where=propensity_0_array != 0)
+    Y_hat_0 = exposure_0_array * rewards_array * HT_weights_0[:,:,np.newaxis]
     ate_estimate_ht_arm0 = np.average(Y_hat_0, axis = (0,1))
 
-    propensity_1_array = propensity_1_array[:,:,np.newaxis]
-    Y_hat_1 = np.zeros((np.shape(rewards_array)))
-    np.divide(exposure_1_array * rewards_array, propensity_1_array, out = Y_hat_1, where=propensity_1_array != 0)
-    print("Number of entries violating zero arm 1 propensity score: {}".format(np.sum(exposure_1_array * (propensity_1_array == 0))))
-    print("Y_hat_1 has {} NaN values".format(np.sum(np.isnan(Y_hat_1))))
-
+    HT_weights_1 = np.zeros((np.shape(propensity_1_array)))
+    np.divide(1, propensity_1_array, out = HT_weights_1, where=propensity_1_array != 0)
+    Y_hat_1 = exposure_1_array * rewards_array * HT_weights_1[:,:,np.newaxis]
     ate_estimate_ht_arm1 = np.average(Y_hat_1, axis = (0,1))
     
     ate_estimate_ht = ate_estimate_ht_arm1 - ate_estimate_ht_arm0
@@ -167,25 +185,23 @@ def hajek(
         propensity_1_array: np.ndarray,
         propensity_0_array: np.ndarray) -> Dict:
 
-    propensity_0_array = propensity_0_array[:,:,np.newaxis]
-    Y_hat_0 = np.zeros((np.shape(rewards_array)))
-    np.divide(exposure_0_array * rewards_array, propensity_0_array, out = Y_hat_0, where=propensity_0_array != 0)
-    denom_0 = np.zeros((np.shape(rewards_array)))
-    np.divide(exposure_0_array, propensity_0_array, out = denom_0, where=propensity_0_array != 0)
-    print("Number of entries violating zero arm 0 propensity score: {}".format(np.sum(exposure_0_array * (propensity_0_array == 0))))
-    print("Y_hat_0 has {} NaN values".format(np.sum(np.isnan(Y_hat_0))))
+    (n,T,num_sims) = rewards_array.shape
 
-    ate_estimate_hajek_arm0 = np.sum(Y_hat_0, axis = (0,1)) / np.sum(denom_0, axis = (0,1))
+    HT_weights_0 = np.zeros((np.shape(propensity_0_array)))
+    np.divide(1, propensity_0_array, out = HT_weights_0, where=propensity_0_array != 0)
+    Y_hat_0 = np.sum(exposure_0_array * rewards_array * HT_weights_0[:,:,np.newaxis], axis = (0,1))
+    denom_0 = np.sum(exposure_0_array * HT_weights_0[:,:,np.newaxis], axis = (0,1))
 
-    propensity_1_array = propensity_1_array[:,:,np.newaxis]
-    Y_hat_1 = np.zeros((np.shape(rewards_array)))
-    np.divide(exposure_1_array * rewards_array, propensity_1_array, out = Y_hat_1, where=propensity_1_array != 0)
-    denom_1 = np.zeros((np.shape(rewards_array)))
-    np.divide(exposure_1_array, propensity_1_array, out = denom_1, where=propensity_1_array != 0)
-    print("Number of entries violating zero arm 1 propensity score: {}".format(np.sum(exposure_1_array * (propensity_1_array == 0))))
-    print("Y_hat_1 has {} NaN values".format(np.sum(np.isnan(Y_hat_1))))
+    ate_estimate_hajek_arm0 = np.zeros(num_sims)
+    np.divide(Y_hat_0, denom_0, out = ate_estimate_hajek_arm0, where=denom_0 != 0)
 
-    ate_estimate_hajek_arm1 = np.sum(Y_hat_1, axis = (0,1)) / np.sum(denom_1, axis = (0,1))
+    HT_weights_1 = np.zeros((np.shape(propensity_1_array)))
+    np.divide(1, propensity_1_array, out = HT_weights_1, where=propensity_1_array != 0)
+    Y_hat_1 = np.sum(exposure_1_array * rewards_array * HT_weights_1[:,:,np.newaxis], axis = (0,1))
+    denom_1 = np.sum(exposure_1_array * HT_weights_1[:,:,np.newaxis], axis = (0,1))
+
+    ate_estimate_hajek_arm1 = np.zeros(num_sims)
+    np.divide(Y_hat_1, denom_1, out = ate_estimate_hajek_arm1, where=denom_1 != 0)
     
     ate_estimate_hajek = ate_estimate_hajek_arm1 - ate_estimate_hajek_arm0
 
