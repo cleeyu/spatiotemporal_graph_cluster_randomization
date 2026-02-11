@@ -49,7 +49,7 @@ class InventoryMarkovChain:
 
         denom = np.tensordot(self.adj_matrix, np.ones(treatment_tensor.shape), axes=([1],[0])) - 1
         competition = np.zeros(treatment_tensor.shape)
-        np.divide((np.tensordot(self.adj_matrix, self.treatment_tensor, axes=([1],[0])) - 1), denom, out=competition, where=denom!=0)
+        np.divide((np.tensordot(self.adj_matrix, self.treatment_tensor, axes=([1],[0])) - self.treatment_tensor), denom, out=competition, where=denom!=0)
         P_it = self.alpha_array[:,:,np.newaxis] + self.beta_array[:,:,np.newaxis] * self.treatment_tensor - self.gamma_array[:,:,np.newaxis] * competition
         if use_sigmoid:
             P_it = 1 / (1 + np.exp(-P_it))

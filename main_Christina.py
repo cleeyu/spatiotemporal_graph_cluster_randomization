@@ -13,16 +13,16 @@ import matplotlib.pyplot as plt
 # ================================================================================
 
 # parameters: Network and spatial clustering
-N = 30**2                         # Number of nodes (must be perfect square if generating lattice graph)
-NUM_CELLS_PER_DIM = 6              # Width of squares for cluster randomization
+N = 1                      # Number of nodes (must be perfect square if generating lattice graph)
+NUM_CELLS_PER_DIM = 1              # Width of squares for cluster randomization
 KAPPA = 3                      # Kappa parameter for interference graph generation
 
 # parameters: Design and estimator 
-T = 900                        # Number of time periods
-TIME_BLOCK_LENGTH = 5          # Length of time blocks for cluster randomization
-NUM_STATES = 5                 # Number of states in the MDP
-DELTA = 0.2                   # Delta parameter for exposure computation
-RECENCY = 4                    # Recency parameter for exposure computation
+T = 1000                        # Number of time periods
+TIME_BLOCK_LENGTH = 4          # Length of time blocks for cluster randomization
+NUM_STATES = 3                 # Number of states in the MDP
+DELTA = 0.05                   # Delta parameter for exposure computation
+RECENCY = 3                    # Recency parameter for exposure computation
 
 # parameters: MDP 
 C_LAZY = 0.1                   # Laziness parameter
@@ -34,9 +34,9 @@ C_SLOPE = 10                   # Slope parameter for reward function
 
 # parameters: Simulation
 INITIAL_STATE = 1              # Initial state for MDP simulation
-NUM_MONTE_CARLO_ATE = 100       # Number of simulations for Monte Carlo ATE approximation
-NUM_PROP_SCORE_SIMS = 10**3      # Number of simulations for propensity score computation
-NUM_ITER_EST = 10**3               # Number of iterations for main HT/Hajek estimator simulation
+NUM_MONTE_CARLO_ATE = 10000       # Number of simulations for Monte Carlo ATE approximation
+NUM_PROP_SCORE_SIMS = 10000      # Number of simulations for propensity score computation
+NUM_ITER_EST = 100000               # Number of iterations for main HT/Hajek estimator simulation
 
 # Print and save
 OUTPUT_DIR = "results"         # Directory to save results
@@ -140,7 +140,7 @@ def main():
     
     # Generate the Markov Chain 
     MC = mdp_helpers.InventoryMarkovChain(
-        max_inventory=sim_config['num_states'],
+        max_inventory=sim_config['num_states'] - 1,
         adj_matrix=adj_matrix,
         num_rounds=sim_config['T'],
         C_lazy=C_LAZY,
