@@ -11,6 +11,7 @@ def generate_time_blocks(
         time_block_length: int
         ) -> np.ndarray:
     """Generate array of time block indices for each round."""
+    time_block_length = int(time_block_length)
     block_id = np.arange(T) // time_block_length
     time_cluster_matrix = np.zeros((T, int(np.ceil(T / time_block_length))))
     time_cluster_matrix[np.arange(T), block_id] = 1
@@ -64,22 +65,29 @@ def exposure_mapping(
     """
     Compute spatio-temporal exposure mapping.
     Input:
-        arms_array: N x T binary matrix of treatment assignments (0 or 1)
+        arms_array: N x T x num_realizations binary matrix of treatment assignments (0 or 1)
         adj_map: Adjacency map where adj_map[i] = list of neighbors of node i
         recency: int, temporal window size r (default=1)
     Returns:
         dict containing exposure_1_array, exposure_0_array, dof, and num_spatial_neighbors
     """
-    treated_neighb = np.transpose(np.tensordot(np.tensordot(adj_matrix, treatment_array, axes=([1],[0])), time_adj_matrix.T, axes=([1],[0])), axes=(0, 2, 1))
-    treated_neighb -= treatment_array
-    total_neighb = np.transpose(np.tensordot(np.tensordot(adj_matrix, np.ones(treatment_array.shape), axes=([1],[0])), time_adj_matrix.T, axes=([1],[0])), axes=(0, 2, 1))
-    total_neighb -= np.ones(treatment_array.shape)
-    exposure_1_array = treatment_array * (treated_neighb >= (1-delta)*total_neighb).astype(int)  # 1 if self treated AND (1-delta) fraction of neighbors are treated
-    exposure_0_array = (1 - treatment_array) * (treated_neighb <= delta*total_neighb).astype(int)  # 1 if self control AND (1-delta) fraction of neighbors are untreated
+    
+    num_neighb = np.sum(adj_matrix, axis=1) - 1
+    treated_neighb = np.tensordot(adj_matrix, treatment_array, axes=([1],[0])) - treatment_array
+    current_exposure_1 = treatment_array * (treated_neighb >= (1-delta)*num_neighb[:,np.newaxis,np.newaxis]).astype(int)
+    current_exposure_0 = (1-treatment_array) * (treated_neighb <= delta*num_neighb[:,np.newaxis,np.newaxis]).astype(int)
+    
+    num_time_neighb = np.sum(time_adj_matrix, axis=1)
+    cumulative_exposure_1 = np.transpose(np.tensordot(current_exposure_1, time_adj_matrix.T, axes=([1],[0])), axes=(0, 2, 1))
+    cumulative_exposure_0 = np.transpose(np.tensordot(current_exposure_0, time_adj_matrix.T, axes=([1],[0])), axes=(0, 2, 1))
+    
+    exposure_1_array = (cumulative_exposure_1 == num_time_neighb[np.newaxis,:,np.newaxis]).astype(int)
+    exposure_0_array = (cumulative_exposure_0 == num_time_neighb[np.newaxis,:,np.newaxis]).astype(int)
+
     return {
         "exposure_1": exposure_1_array,
         "exposure_0": exposure_0_array,
-        "dof": total_neighb,  # for debugging
+        "dof": num_neighb,  # for debugging
     }
 
 def empirical_propensity_scores(
@@ -143,9 +151,9 @@ def horvitz_thompson(
     ate_estimate_ht = ate_estimate_ht_arm1 - ate_estimate_ht_arm0
 
     return {
-        'ate_estimate_ht_arm0': ate_estimate_ht_arm0,
-        'ate_estimate_ht_arm1': ate_estimate_ht_arm1,
-        'ate_estimate_ht': ate_estimate_ht,
+        'ate_estimate_arm0': ate_estimate_ht_arm0,
+        'ate_estimate_arm1': ate_estimate_ht_arm1,
+        'ate_estimate': ate_estimate_ht,
     }
 
 
@@ -181,7 +189,50 @@ def hajek(
     ate_estimate_hajek = ate_estimate_hajek_arm1 - ate_estimate_hajek_arm0
 
     return {
-        'ate_estimate_hajek_arm0': ate_estimate_hajek_arm0,
-        'ate_estimate_hajek_arm1': ate_estimate_hajek_arm1,
-        'ate_estimate_hajek': ate_estimate_hajek,
+        'ate_estimate_arm0': ate_estimate_hajek_arm0,
+        'ate_estimate_arm1': ate_estimate_hajek_arm1,
+        'ate_estimate': ate_estimate_hajek,
+    }
+
+# =============================================================================
+# DIFF IN MEANS ESTIMATOR
+# =============================================================================
+
+def diff_means(
+        rewards_array: np.ndarray,
+        treatment_array: np.ndarray,
+        time_block_length: int,
+        burn_in: int
+        ) -> Dict:
+    
+    (n,T,num_sims) = rewards_array.shape
+
+    burn_in = max(0, burn_in)
+    burn_in = min(burn_in, time_block_length - 1)
+
+    position_in_block = np.arange(T) % time_block_length
+    burn_in_indicator = position_in_block < burn_in
+
+    exposure_1_array = treatment_array * (1- burn_in_indicator[np.newaxis,:,np.newaxis])
+    exposure_0_array = (1 - treatment_array) * (1- burn_in_indicator[np.newaxis,:,np.newaxis])
+
+
+    Y_hat_0 = np.sum(exposure_0_array * rewards_array, axis = (0,1))
+    denom_0 = np.sum(exposure_0_array, axis = (0,1))
+
+    ate_estimate_DM_arm0 = np.zeros(num_sims)
+    np.divide(Y_hat_0, denom_0, out = ate_estimate_DM_arm0, where=denom_0 != 0)
+
+    Y_hat_1 = np.sum(exposure_1_array * rewards_array, axis = (0,1))
+    denom_1 = np.sum(exposure_1_array, axis = (0,1))
+
+    ate_estimate_DM_arm1 = np.zeros(num_sims)
+    np.divide(Y_hat_1, denom_1, out = ate_estimate_DM_arm1, where=denom_1 != 0)
+    
+    ate_estimate_DM = ate_estimate_DM_arm1 - ate_estimate_DM_arm0
+
+    return {
+        'ate_estimate_arm0': ate_estimate_DM_arm0,
+        'ate_estimate_arm1': ate_estimate_DM_arm1,
+        'ate_estimate': ate_estimate_DM,
     }
