@@ -15,28 +15,28 @@ import matplotlib.pyplot as plt
 # parameters: Network and spatial clustering
 N = 1                      # Number of nodes (must be perfect square if generating lattice graph)
 NUM_CELLS_PER_DIM = 1              # Width of squares for cluster randomization
-KAPPA = 3                      # Kappa parameter for interference graph generation
+KAPPA = 0.1                      # Kappa parameter for interference graph generation
 
 # parameters: Design and estimator 
-T = 1000                        # Number of time periods
-TIME_BLOCK_LENGTH = 100          # Length of time blocks for cluster randomization
-NUM_STATES = 3                 # Number of states in the MDP
-DELTA = 0.05                   # Delta parameter for exposure computation
-RECENCY = 20                    # Recency parameter for exposure computation
+T = 10000                        # Number of time periods
+TIME_BLOCK_LENGTH = 50         # Length of time blocks for cluster randomization
+NUM_STATES = 30                 # Number of states in the MDP
+DELTA = 0.2                   # Delta parameter for exposure computation
+RECENCY = 50                    # Recency parameter for exposure computation
 
 # parameters: MDP 
-C_LAZY = 0.1                   # Laziness parameter
-C_ALPHA = -5                   # Alpha parameter for transition probability
-C_BETA = 10                    # Beta parameter for transition probability  
-C_GAMMA = 0                    # Gamma parameter for transition probability
-C_BASELINE = 100               # Baseline reward parameter
-C_SLOPE = 10                   # Slope parameter for reward function
+# C_LAZY = 0.1                   # Laziness parameter
+# C_ALPHA = -5                   # Alpha parameter for transition probability
+# C_BETA = 10                    # Beta parameter for transition probability  
+# C_GAMMA = 0                    # Gamma parameter for transition probability
+# C_BASELINE = 100               # Baseline reward parameter
+# C_SLOPE = 10                   # Slope parameter for reward function
 
 # parameters: Simulation
-INITIAL_STATE = 1              # Initial state for MDP simulation
-NUM_MONTE_CARLO_ATE = 10000       # Number of simulations for Monte Carlo ATE approximation
-NUM_PROP_SCORE_SIMS = 10000      # Number of simulations for propensity score computation
-NUM_ITER_EST = 100000               # Number of iterations for main HT/Hajek estimator simulation
+INITIAL_STATE = 15              # Initial state for MDP simulation
+NUM_MONTE_CARLO_ATE = 1000       # Number of simulations for Monte Carlo ATE approximation
+NUM_PROP_SCORE_SIMS = 1000      # Number of simulations for propensity score computation
+NUM_ITER_EST = 10000               # Number of iterations for main HT/Hajek estimator simulation
 
 # Print and save
 OUTPUT_DIR = "results"         # Directory to save results
@@ -102,17 +102,17 @@ def main():
         'Delta_Parameter': DELTA,
         'Recency_Parameter': RECENCY,
         'Interference_Kappa': KAPPA,
-        'MDP_Laziness_C_lazy': C_LAZY,
-        'Transition_Alpha_C_alpha': C_ALPHA,
-        'Transition_Beta_C_beta': C_BETA,
-        'Transition_Gamma_C_gamma': C_GAMMA,
-        'Reward_Baseline_C_baseline': C_BASELINE,
-        'Reward_Slope_C_slope': C_SLOPE,
         'Initial_MDP_State': INITIAL_STATE,
         'Monte_Carlo_ATE_Iterations': NUM_MONTE_CARLO_ATE,
         'Propensity_Score_Simulations': NUM_PROP_SCORE_SIMS,
         'HT_Estimator_Iterations': NUM_ITER_EST
     }
+        # 'MDP_Laziness_C_lazy': C_LAZY,
+        # 'Transition_Alpha_C_alpha': C_ALPHA,
+        # 'Transition_Beta_C_beta': C_BETA,
+        # 'Transition_Gamma_C_gamma': C_GAMMA,
+        # 'Reward_Baseline_C_baseline': C_BASELINE,
+        # 'Reward_Slope_C_slope': C_SLOPE,
     
     # Step 1: Define instance (interference graph, reward func, transition probability)
     print("\nStep 1: Defining simulation instance...")
@@ -128,28 +128,36 @@ def main():
     }
     
     # Create interference graph
-    adj_matrix = graph_helpers.generate_interference_graph_from_lattice(
-        sqrt_n=int(np.sqrt(sim_config['n'])), 
-        kappa=sim_config['kappa']
-    )
-
-    cluster_matrix = graph_helpers.generate_clusters_from_lattice(sqrt_n=int(np.sqrt(sim_config['n'])), num_cells_per_dim=sim_config['num_cells_per_dim'])
+    coords_array = graph_helpers.generate_random_points(sim_config['n'])
+    adj_matrix = graph_helpers.build_adjacency_matrix_from_coords(coords_array, sim_config['kappa'])
+    cluster_matrix = graph_helpers.spatial_clustering_map(coords_array, sim_config['num_cells_per_dim'])
 
     time_cluster_matrix = stats_helpers.generate_time_blocks(T=sim_config['T'], time_block_length=sim_config['time_block_length'])
     time_adj_matrix = np.tril(np.ones((sim_config['T'],sim_config['T'])), k=0) - np.tril(np.ones((sim_config['T'],sim_config['T'])), k=-(sim_config['recency'] + 1))
     
     # Generate the Markov Chain 
+    n = sim_config['n']
+    num_rounds = sim_config['T']
+    max_inventory=(sim_config['num_states']-1)*np.ones(n)
+    C_baseline = np.outer(np.random.random(n), np.ones(num_rounds))
+    C_slope = np.ones((n,num_rounds)) + 0.2 * np.random.random((n, num_rounds))
+    C_lazy = 0.1 * np.ones((n,num_rounds))
+    C_alpha = np.random.normal(loc = -5, scale = 2, size = ((n,num_rounds)))
+    C_beta = np.random.normal(loc = 10, scale = 4, size = ((n,num_rounds)))
+    C_gamma = 0.5*np.random.random((n,num_rounds)) * C_beta
+    C_depart = np.random.random((n,num_rounds))
+
     MC = mdp_helpers.InventoryMarkovChain(
-        max_inventory=sim_config['num_states'] - 1,
+        max_inventory=max_inventory,
         adj_matrix=adj_matrix,
         num_rounds=sim_config['T'],
-        C_lazy=C_LAZY,
-        C_alpha=C_ALPHA,
-        C_beta=C_BETA,
-        C_gamma=C_GAMMA,
-        C_baseline=C_BASELINE,
-        C_slope=C_SLOPE
-    )
+        C_baseline = C_baseline,
+        C_slope= C_slope,
+        C_lazy = C_lazy,
+        C_alpha = C_alpha,
+        C_beta = C_beta,
+        C_gamma = C_gamma,
+        C_depart = C_depart)
 
     # Step 2: Find true ATE using Monte Carlo
     print("\nStep 2: Computing true ATE using Monte Carlo...")
@@ -203,7 +211,7 @@ def main():
 
     # CHECK with deteriministic rewards set to be all_0_mean for all control units and all_1_mean for all treated units
     ht_fake_results = stats_helpers.horvitz_thompson(all_0_mean * (1- arms_array) + all_1_mean * arms_array,exposure_results['exposure_1'],exposure_results['exposure_0'],propensity_1_array,propensity_0_array)
-    ate_estimate_fake_ht = ht_fake_results['ate_estimate_ht']
+    ate_estimate_fake_ht = ht_fake_results['ate_estimate']
 
     print("\n" + "="*60 + "\nFAKE REWARDS HORVITZ-THOMPSON ESTIMATES\n" + "="*60)
     mean_fake_HT_est, var_fake_HT_est = ate_estimate_fake_ht.mean(), ate_estimate_fake_ht.var()
@@ -214,9 +222,9 @@ def main():
 
     # CHECK with the vanilla HT, using exposure mapping as W and 1-W, and ground truth 0.5 propensity scores
     ht_vanilla_results = stats_helpers.horvitz_thompson(rewards,arms_array,1-arms_array,0.5*np.ones(propensity_1_array.shape),0.5*np.ones(propensity_0_array.shape))
-    ate_estimate_vanilla_ht = ht_vanilla_results['ate_estimate_ht']
+    ate_estimate_vanilla_ht = ht_vanilla_results['ate_estimate']
 
-    print("\n" + "="*60 + "\nVANILLA REWARDS HORVITZ-THOMPSON ESTIMATES\n" + "="*60)
+    print("\n" + "="*60 + "\nVANILLA HORVITZ-THOMPSON ESTIMATES\n" + "="*60)
     mean_vanilla_HT_est, var_vanilla_HT_est = ate_estimate_vanilla_ht.mean(), ate_estimate_vanilla_ht.var()
     print(f"Mean HT estimate: {mean_vanilla_HT_est:.4f}")
     print(f"Bias: {mean_vanilla_HT_est - true_ATE:.4f}")
@@ -225,7 +233,7 @@ def main():
 
     # HT with interference exposure mapping
     ht_results = stats_helpers.horvitz_thompson(rewards,exposure_results['exposure_1'],exposure_results['exposure_0'],propensity_1_array,propensity_0_array)
-    ate_estimate_ht = ht_results['ate_estimate_ht']
+    ate_estimate_ht = ht_results['ate_estimate']
     
     print("\n" + "="*60 + "\nHORVITZ-THOMPSON ESTIMATES\n" + "="*60)
     mean_HT_est, var_HT_est = ate_estimate_ht.mean(), ate_estimate_ht.var()
@@ -236,124 +244,136 @@ def main():
 
     # Hajek with interference exposure mapping
     hajek_results = stats_helpers.hajek(rewards,exposure_results['exposure_1'],exposure_results['exposure_0'],propensity_1_array,propensity_0_array)
-    ate_estimate_hajek = hajek_results['ate_estimate_hajek']
+    ate_estimate_hajek = hajek_results['ate_estimate']
 
     print("\n" + "="*60 + "\nHAJEK ESTIMATES\n" + "="*60)
     mean_Hajek_est, var_Hajek_est = ate_estimate_hajek.mean(), ate_estimate_hajek.var()
-    print(f"Mean HT estimate: {mean_Hajek_est:.4f}")
+    print(f"Mean Hajek estimate: {mean_Hajek_est:.4f}")
     print(f"Bias: {mean_Hajek_est - true_ATE:.4f}")
-    print(f"Variance of HT estimate: {var_Hajek_est:.4f}")
+    print(f"Variance of Hajek estimate: {var_Hajek_est:.4f}")
     print(f"Standard deviation: {np.sqrt(var_Hajek_est):.4f}")
+
+    # Diff in Means with burn in
+    burn_in = 0
+    DM_results = stats_helpers.diff_means(rewards,arms_array,sim_config['time_block_length'], burn_in)
+    ate_estimate_DM = DM_results['ate_estimate']
+
+    print("\n" + "="*60 + "\nDIFF-IN-MEANS ESTIMATES\n" + "="*60)
+    mean_DM_est, var_DM_est = ate_estimate_DM.mean(), ate_estimate_DM.var()
+    print(f"Mean DM estimate: {mean_DM_est:.4f}")
+    print(f"Bias: {mean_DM_est - true_ATE:.4f}")
+    print(f"Variance of DM estimate: {var_DM_est:.4f}")
+    print(f"Standard deviation: {np.sqrt(var_DM_est):.4f}")
 
     # Calculate total simulation runtime
     total_runtime_seconds = time.time() - simulation_start_time
     print(f"Total simulation runtime: {total_runtime_seconds:.2f} seconds ({total_runtime_seconds/60:.2f} minutes)")
     utils.print_time()
 
-    print("\nPreparing Log Files and Saving Data, Printing results from a subset of Iterations")
+    # print("\nPreparing Log Files and Saving Data, Printing results from a subset of Iterations")
 
-    # This loop is purely to print logs to the file and terminal in order to be somewhat backwards compatible in debugging
-    # But the calculation is already done so we could also skip the below loop and just save the above tensorized results dirrectly
-    for iter_idx in range(num_iter_est):
-        est_result={'ate_estimate_ht': ate_estimate_ht[iter_idx],
-                    'ate_estimate_hajek': ate_estimate_hajek[iter_idx],
-                'exposure_1': exposure_results['exposure_1'][:,:,iter_idx],
-                'exposure_0': exposure_results['exposure_0'][:,:,iter_idx],
-                'rewards': sim_results["rewards"][:,:,iter_idx]
-        }
+    # # This loop is purely to print logs to the file and terminal in order to be somewhat backwards compatible in debugging
+    # # But the calculation is already done so we could also skip the below loop and just save the above tensorized results dirrectly
+    # for iter_idx in range(num_iter_est):
+    #     est_result={'ate_estimate_ht': ate_estimate_ht[iter_idx],
+    #                 'ate_estimate_hajek': ate_estimate_hajek[iter_idx],
+    #             'exposure_1': exposure_results['exposure_1'][:,:,iter_idx],
+    #             'exposure_0': exposure_results['exposure_0'][:,:,iter_idx],
+    #             'rewards': sim_results["rewards"][:,:,iter_idx]
+    #     }
 
-        # Store detailed results for this iteration with readable column names
-        iteration_result = {
-            'Iteration_Number': iter_idx + 1,  # 1-indexed for readability
-            'HT_Estimate': est_result['ate_estimate_ht'],
-            'Hajek_Estimate': est_result['ate_estimate_hajek'],
-            'True_ATE': true_ATE,
-            'Bias_HT': est_result['ate_estimate_ht'] - true_ATE,
-            'Bias_Hajek': est_result['ate_estimate_hajek'] - true_ATE,
-            'Mean_Reward_Treatment_Group': est_result['rewards'][np.nonzero(est_result['exposure_1'])].mean() if len(np.nonzero(est_result['exposure_1'])[0]) > 0 else 0,
-            'Mean_Reward_Control_Group': est_result['rewards'][np.nonzero(est_result['exposure_0'])].mean() if len(np.nonzero(est_result['exposure_0'])[0]) > 0 else 0,
-            'Number_Treatment_Units': len(np.nonzero(est_result['exposure_1'])[0]),
-            'Number_Control_Units': len(np.nonzero(est_result['exposure_0'])[0]),
-            'Reward_Difference': (est_result['rewards'][np.nonzero(est_result['exposure_1'])].mean() if len(np.nonzero(est_result['exposure_1'])[0]) > 0 else 0) - (est_result['rewards'][np.nonzero(est_result['exposure_0'])].mean() if len(np.nonzero(est_result['exposure_0'])[0]) > 0 else 0),
-            'Iteration_Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-        detailed_results.append(iteration_result)
+    #     # Store detailed results for this iteration with readable column names
+    #     iteration_result = {
+    #         'Iteration_Number': iter_idx + 1,  # 1-indexed for readability
+    #         'HT_Estimate': est_result['ate_estimate_ht'],
+    #         'Hajek_Estimate': est_result['ate_estimate_hajek'],
+    #         'True_ATE': true_ATE,
+    #         'Bias_HT': est_result['ate_estimate_ht'] - true_ATE,
+    #         'Bias_Hajek': est_result['ate_estimate_hajek'] - true_ATE,
+    #         'Mean_Reward_Treatment_Group': est_result['rewards'][np.nonzero(est_result['exposure_1'])].mean() if len(np.nonzero(est_result['exposure_1'])[0]) > 0 else 0,
+    #         'Mean_Reward_Control_Group': est_result['rewards'][np.nonzero(est_result['exposure_0'])].mean() if len(np.nonzero(est_result['exposure_0'])[0]) > 0 else 0,
+    #         'Number_Treatment_Units': len(np.nonzero(est_result['exposure_1'])[0]),
+    #         'Number_Control_Units': len(np.nonzero(est_result['exposure_0'])[0]),
+    #         'Reward_Difference': (est_result['rewards'][np.nonzero(est_result['exposure_1'])].mean() if len(np.nonzero(est_result['exposure_1'])[0]) > 0 else 0) - (est_result['rewards'][np.nonzero(est_result['exposure_0'])].mean() if len(np.nonzero(est_result['exposure_0'])[0]) > 0 else 0),
+    #         'Iteration_Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    #     }
+    #     detailed_results.append(iteration_result)
         
-        # Progress monitoring: Display elapsed time, and ETA
-        print_nicely.print_progress_ht(
-            iter=iter_idx,
-            num_iter_simulation=num_iter_est, 
-            start_time=start_time,
-            est_result=est_result,
-            rewards_array=sim_results["rewards"][:,:,iter_idx],
-            ht_result=ate_estimate_ht,
-            true_ATE=true_ATE,
-            print_freq=int(num_iter_est/1)
-        )    
+    #     # Progress monitoring: Display elapsed time, and ETA
+    #     print_nicely.print_progress_ht(
+    #         iter=iter_idx,
+    #         num_iter_simulation=num_iter_est, 
+    #         start_time=start_time,
+    #         est_result=est_result,
+    #         rewards_array=sim_results["rewards"][:,:,iter_idx],
+    #         ht_result=ate_estimate_ht,
+    #         true_ATE=true_ATE,
+    #         print_freq=int(num_iter_est/1)
+    #     )    
 
-    # Save results with human-readable column names
-    summary_results = {
-        **config_data,
-        'TRUE_ATE': true_ATE,
-        'All_Treatment_Mean_Reward': all_1_mean,
-        'All_Control_Mean_Reward': all_0_mean,
-        'Propensity_Score_Treatment_Mean': prop_1_mean,
-        'Propensity_Score_Control_Mean': prop_0_mean,
-        'HT_Estimate_Mean': mean_HT_est,
-        'HT_Bias': mean_HT_est - true_ATE,
-        'HT_Variance': var_HT_est,
-        'HT_Standard_Deviation': np.sqrt(var_HT_est),
-        'Hajek_Estimate_Mean': mean_Hajek_est,
-        'Hajek_Bias': mean_Hajek_est - true_ATE,
-        'Hajek_Variance': var_Hajek_est,
-        'Hajek_Standard_Deviation': np.sqrt(var_Hajek_est),
-        'Total_Network_Nodes': N,
-        'Expected_Treatment_Exposures': n*T_val*prop_1_mean,
-        'Expected_Control_Exposures': n*T_val*prop_0_mean,
-        'Total_Runtime_Seconds': total_runtime_seconds,
-        'Total_Runtime_Minutes': total_runtime_seconds/60,
-        'Simulation_Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'Simulation_Date': datetime.now().strftime('%Y-%m-%d'),
-        'Completed_At_NY': datetime.now().strftime('%H:%M:%S EST')
-    }
-    # Save results with useful variables for debugging
-    additional_vars = {
-        # 'baseline_array': baseline_array,
-        # 'slope_array': slope_array,
-        # 'laziness_array': laziness_array,
-        # 'alpha_array': alpha_array,
-        # 'beta_array': beta_array,
-        # 'gamma_array': gamma_array,
-        # 'ate_monte_carlo_results': ate_monte_carlo,
-        'emp_prop_score_results': emp_prop_score_results
-    }
+    # # Save results with human-readable column names
+    # summary_results = {
+    #     **config_data,
+    #     'TRUE_ATE': true_ATE,
+    #     'All_Treatment_Mean_Reward': all_1_mean,
+    #     'All_Control_Mean_Reward': all_0_mean,
+    #     'Propensity_Score_Treatment_Mean': prop_1_mean,
+    #     'Propensity_Score_Control_Mean': prop_0_mean,
+    #     'HT_Estimate_Mean': mean_HT_est,
+    #     'HT_Bias': mean_HT_est - true_ATE,
+    #     'HT_Variance': var_HT_est,
+    #     'HT_Standard_Deviation': np.sqrt(var_HT_est),
+    #     'Hajek_Estimate_Mean': mean_Hajek_est,
+    #     'Hajek_Bias': mean_Hajek_est - true_ATE,
+    #     'Hajek_Variance': var_Hajek_est,
+    #     'Hajek_Standard_Deviation': np.sqrt(var_Hajek_est),
+    #     'Total_Network_Nodes': N,
+    #     'Expected_Treatment_Exposures': n*T_val*prop_1_mean,
+    #     'Expected_Control_Exposures': n*T_val*prop_0_mean,
+    #     'Total_Runtime_Seconds': total_runtime_seconds,
+    #     'Total_Runtime_Minutes': total_runtime_seconds/60,
+    #     'Simulation_Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    #     'Simulation_Date': datetime.now().strftime('%Y-%m-%d'),
+    #     'Completed_At_NY': datetime.now().strftime('%H:%M:%S EST')
+    # }
+    # # Save results with useful variables for debugging
+    # additional_vars = {
+    #     # 'baseline_array': baseline_array,
+    #     # 'slope_array': slope_array,
+    #     # 'laziness_array': laziness_array,
+    #     # 'alpha_array': alpha_array,
+    #     # 'beta_array': beta_array,
+    #     # 'gamma_array': gamma_array,
+    #     # 'ate_monte_carlo_results': ate_monte_carlo,
+    #     'emp_prop_score_results': emp_prop_score_results
+    # }
     
-    # Let utils create the timestamped folder and save all other results
-    saved_run_folder = utils.save_results_to_csv(
-        summary_results=summary_results, 
-        detailed_results=detailed_results, 
-        output_dir=OUTPUT_DIR, 
-        filename=OUTPUT_FILENAME,
-        ht_result=ate_estimate_ht,
-        hajek_result=ate_estimate_hajek,
-        propensity_1_array=propensity_1_array,
-        propensity_0_array=propensity_0_array,
-        adj_matrix=adj_matrix,
-        additional_vars=additional_vars
-    )
+    # # Let utils create the timestamped folder and save all other results
+    # saved_run_folder = utils.save_results_to_csv(
+    #     summary_results=summary_results, 
+    #     detailed_results=detailed_results, 
+    #     output_dir=OUTPUT_DIR, 
+    #     filename=OUTPUT_FILENAME,
+    #     ht_result=ate_estimate_ht,
+    #     hajek_result=ate_estimate_hajek,
+    #     propensity_1_array=propensity_1_array,
+    #     propensity_0_array=propensity_0_array,
+    #     adj_matrix=adj_matrix,
+    #     additional_vars=additional_vars
+    # )
     
-    # Restore stdout and close temporary log file
-    sys.stdout = original_stdout
-    logger.close()
+    # # Restore stdout and close temporary log file
+    # sys.stdout = original_stdout
+    # logger.close()
     
-    # Move log file to the correct results folder
-    final_log_path = os.path.join(saved_run_folder, "_simulation_log.txt")
-    import shutil
-    shutil.move(temp_log_path, final_log_path)
+    # # Move log file to the correct results folder
+    # final_log_path = os.path.join(saved_run_folder, "_simulation_log.txt")
+    # import shutil
+    # shutil.move(temp_log_path, final_log_path)
     
-    print(f"Simulation completed. Log saved to: {final_log_path}")
+    # print(f"Simulation completed. Log saved to: {final_log_path}")
     
-    return summary_results, detailed_results, saved_run_folder
+    # return summary_results, detailed_results, saved_run_folder
 
 
 if __name__ == "__main__":
@@ -362,17 +382,18 @@ if __name__ == "__main__":
     print(f"Timestamp: {datetime.now()}")
     
     try:
-        summary_results, detailed_results, run_folder = main()
-        print("\n" + "="*80)
-        print("SIMULATION SUMMARY")
-        print("="*80)
-        print(f"True ATE: {summary_results['TRUE_ATE']:.4f}")
-        print(f"Mean HT Estimate: {summary_results['HT_Estimate_Mean']:.4f}")
-        print(f"HT Bias: {summary_results['HT_Bias']:.4f}")
-        print(f"HT Standard Deviation: {summary_results['HT_Standard_Deviation']:.4f}")
-        print(f"Mean Hajek Estimate: {summary_results['Hajek_Estimate_Mean']:.4f}")
-        print(f"Hajek Bias: {summary_results['Hajek_Bias']:.4f}")
-        print(f"Hajek Standard Deviation: {summary_results['Hajek_Standard_Deviation']:.4f}")
+        main()
+        # summary_results, detailed_results, run_folder = main()
+        # print("\n" + "="*80)
+        # print("SIMULATION SUMMARY")
+        # print("="*80)
+        # print(f"True ATE: {summary_results['TRUE_ATE']:.4f}")
+        # print(f"Mean HT Estimate: {summary_results['HT_Estimate_Mean']:.4f}")
+        # print(f"HT Bias: {summary_results['HT_Bias']:.4f}")
+        # print(f"HT Standard Deviation: {summary_results['HT_Standard_Deviation']:.4f}")
+        # print(f"Mean Hajek Estimate: {summary_results['Hajek_Estimate_Mean']:.4f}")
+        # print(f"Hajek Bias: {summary_results['Hajek_Bias']:.4f}")
+        # print(f"Hajek Standard Deviation: {summary_results['Hajek_Standard_Deviation']:.4f}")
         
     except Exception as e:
         print(f"Error during simulation: {str(e)}")
