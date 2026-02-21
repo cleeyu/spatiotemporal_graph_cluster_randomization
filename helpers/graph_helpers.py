@@ -98,11 +98,12 @@ def spatial_clustering_map(
     cell_width = 1.0 / num_cells_per_dim
 
     x_coord = coords_array[:, 0]
+    x_coord[x_coord == 1] = 0.9999
     y_coord = coords_array[:, 1]
+    y_coord[y_coord == 1] = 0.9999
 
     cluster_map = (np.floor(x_coord / cell_width) * num_cells_per_dim + np.floor(y_coord / cell_width)).astype(int)
-    cluster_map[cluster_map == num_cells_per_dim] = num_cells_per_dim - 1  # Handle boundary case where coord = 1.0
-
+    
     cluster_matrix = np.zeros((n, num_cells_per_dim**2))
     cluster_matrix[np.arange(n), cluster_map] = 1
     return cluster_matrix
