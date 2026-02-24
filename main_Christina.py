@@ -34,7 +34,7 @@ RECENCY = 50                    # Recency parameter for exposure computation
 
 # parameters: Simulation
 INITIAL_STATE = 15              # Initial state for MDP simulation
-NUM_MONTE_CARLO_ATE = 1000       # Number of simulations for Monte Carlo ATE approximation
+NUM_MONTE_CARLO_GATE = 1000       # Number of simulations for Monte Carlo GATE approximation
 NUM_PROP_SCORE_SIMS = 1000      # Number of simulations for propensity score computation
 NUM_ITER_EST = 10000               # Number of iterations for main HT/Hajek estimator simulation
 
@@ -103,7 +103,7 @@ def main():
         'Recency_Parameter': RECENCY,
         'Interference_Kappa': KAPPA,
         'Initial_MDP_State': INITIAL_STATE,
-        'Monte_Carlo_ATE_Iterations': NUM_MONTE_CARLO_ATE,
+        'Monte_Carlo_GATE_Iterations': NUM_MONTE_CARLO_GATE,
         'Propensity_Score_Simulations': NUM_PROP_SCORE_SIMS,
         'HT_Estimator_Iterations': NUM_ITER_EST
     }
@@ -160,20 +160,20 @@ def main():
         C_depart = C_depart,
         initial_state = INITIAL_STATE * np.ones((sim_config['n'])))
 
-    # Step 2: Find true ATE using Monte Carlo
-    print("\nStep 2: Computing true ATE using Monte Carlo...")
+    # Step 2: Find true GATE using Monte Carlo
+    print("\nStep 2: Computing true GATE using Monte Carlo...")
     start_time = time.time()
 
-    sim_results_0 = MC.simulate_MC(np.zeros((sim_config['n'], sim_config['T'],NUM_MONTE_CARLO_ATE)), use_sigmoid=True)
-    sim_results_1 = MC.simulate_MC(np.ones((sim_config['n'], sim_config['T'],NUM_MONTE_CARLO_ATE)), use_sigmoid=True)
+    sim_results_0 = MC.simulate_MC(np.zeros((sim_config['n'], sim_config['T'],NUM_MONTE_CARLO_GATE)), use_sigmoid=True)
+    sim_results_1 = MC.simulate_MC(np.ones((sim_config['n'], sim_config['T'],NUM_MONTE_CARLO_GATE)), use_sigmoid=True)
 
     all_0_mean = np.mean(sim_results_0["rewards"])
     all_1_mean = np.mean(sim_results_1["rewards"])
 
-    print("="*60+ "\nTRUE ATE (approximated using Monte Carlo)\n" + "="*60)
+    print("="*60+ "\nTRUE GATE (approximated using Monte Carlo)\n" + "="*60)
     print(f"Mean reward under all-1 vs. all-0: {all_1_mean:.4f} vs. {all_0_mean:.4f}  ")
-    true_ATE = all_1_mean - all_0_mean
-    print(f"True ATE: {true_ATE:.4f}")
+    true_GATE = all_1_mean - all_0_mean
+    print(f"True GATE: {true_GATE:.4f}")
     
     # Step 3: Find propensity scores (using Monte Carlo)
     print("\nStep 3: Computing propensity scores...\nConfig:")
@@ -217,7 +217,7 @@ def main():
     print("\n" + "="*60 + "\nFAKE REWARDS HORVITZ-THOMPSON ESTIMATES\n" + "="*60)
     mean_fake_HT_est, var_fake_HT_est = gate_estimate_fake_ht.mean(), gate_estimate_fake_ht.var()
     print(f"Mean HT estimate: {mean_fake_HT_est:.4f}")
-    print(f"Bias: {mean_fake_HT_est - true_ATE:.4f}")
+    print(f"Bias: {mean_fake_HT_est - true_GATE:.4f}")
     print(f"Variance of HT estimate: {var_fake_HT_est:.4f}")
     print(f"Standard deviation: {np.sqrt(var_fake_HT_est):.4f}")
 
@@ -228,7 +228,7 @@ def main():
     print("\n" + "="*60 + "\nVANILLA HORVITZ-THOMPSON ESTIMATES\n" + "="*60)
     mean_vanilla_HT_est, var_vanilla_HT_est = gate_estimate_vanilla_ht.mean(), gate_estimate_vanilla_ht.var()
     print(f"Mean HT estimate: {mean_vanilla_HT_est:.4f}")
-    print(f"Bias: {mean_vanilla_HT_est - true_ATE:.4f}")
+    print(f"Bias: {mean_vanilla_HT_est - true_GATE:.4f}")
     print(f"Variance of HT estimate: {var_vanilla_HT_est:.4f}")
     print(f"Standard deviation: {np.sqrt(var_vanilla_HT_est):.4f}")
 
@@ -239,7 +239,7 @@ def main():
     print("\n" + "="*60 + "\nHORVITZ-THOMPSON ESTIMATES\n" + "="*60)
     mean_HT_est, var_HT_est = gate_estimate_ht.mean(), gate_estimate_ht.var()
     print(f"Mean HT estimate: {mean_HT_est:.4f}")
-    print(f"Bias: {mean_HT_est - true_ATE:.4f}")
+    print(f"Bias: {mean_HT_est - true_GATE:.4f}")
     print(f"Variance of HT estimate: {var_HT_est:.4f}")
     print(f"Standard deviation: {np.sqrt(var_HT_est):.4f}")
 
@@ -250,7 +250,7 @@ def main():
     print("\n" + "="*60 + "\nHAJEK ESTIMATES\n" + "="*60)
     mean_Hajek_est, var_Hajek_est = gate_estimate_hajek.mean(), gate_estimate_hajek.var()
     print(f"Mean Hajek estimate: {mean_Hajek_est:.4f}")
-    print(f"Bias: {mean_Hajek_est - true_ATE:.4f}")
+    print(f"Bias: {mean_Hajek_est - true_GATE:.4f}")
     print(f"Variance of Hajek estimate: {var_Hajek_est:.4f}")
     print(f"Standard deviation: {np.sqrt(var_Hajek_est):.4f}")
 
@@ -262,7 +262,7 @@ def main():
     print("\n" + "="*60 + "\nDIFF-IN-MEANS ESTIMATES\n" + "="*60)
     mean_DM_est, var_DM_est = gate_estimate_DM.mean(), gate_estimate_DM.var()
     print(f"Mean DM estimate: {mean_DM_est:.4f}")
-    print(f"Bias: {mean_DM_est - true_ATE:.4f}")
+    print(f"Bias: {mean_DM_est - true_GATE:.4f}")
     print(f"Variance of DM estimate: {var_DM_est:.4f}")
     print(f"Standard deviation: {np.sqrt(var_DM_est):.4f}")
 
@@ -288,9 +288,9 @@ def main():
     #         'Iteration_Number': iter_idx + 1,  # 1-indexed for readability
     #         'HT_Estimate': est_result['gate_estimate_ht'],
     #         'Hajek_Estimate': est_result['gate_estimate_hajek'],
-    #         'True_ATE': true_ATE,
-    #         'Bias_HT': est_result['gate_estimate_ht'] - true_ATE,
-    #         'Bias_Hajek': est_result['gate_estimate_hajek'] - true_ATE,
+    #         'True_GATE': true_GATE,
+    #         'Bias_HT': est_result['gate_estimate_ht'] - true_GATE,
+    #         'Bias_Hajek': est_result['gate_estimate_hajek'] - true_GATE,
     #         'Mean_Reward_Treatment_Group': est_result['rewards'][np.nonzero(est_result['exposure_1'])].mean() if len(np.nonzero(est_result['exposure_1'])[0]) > 0 else 0,
     #         'Mean_Reward_Control_Group': est_result['rewards'][np.nonzero(est_result['exposure_0'])].mean() if len(np.nonzero(est_result['exposure_0'])[0]) > 0 else 0,
     #         'Number_Treatment_Units': len(np.nonzero(est_result['exposure_1'])[0]),
@@ -308,24 +308,24 @@ def main():
     #         est_result=est_result,
     #         rewards_array=sim_results["rewards"][:,:,iter_idx],
     #         ht_result=gate_estimate_ht,
-    #         true_ATE=true_ATE,
+    #         true_GATE=true_GATE,
     #         print_freq=int(num_iter_est/1)
     #     )    
 
     # # Save results with human-readable column names
     # summary_results = {
     #     **config_data,
-    #     'TRUE_ATE': true_ATE,
+    #     'TRUE_GATE': true_GATE,
     #     'All_Treatment_Mean_Reward': all_1_mean,
     #     'All_Control_Mean_Reward': all_0_mean,
     #     'Propensity_Score_Treatment_Mean': prop_1_mean,
     #     'Propensity_Score_Control_Mean': prop_0_mean,
     #     'HT_Estimate_Mean': mean_HT_est,
-    #     'HT_Bias': mean_HT_est - true_ATE,
+    #     'HT_Bias': mean_HT_est - true_GATE,
     #     'HT_Variance': var_HT_est,
     #     'HT_Standard_Deviation': np.sqrt(var_HT_est),
     #     'Hajek_Estimate_Mean': mean_Hajek_est,
-    #     'Hajek_Bias': mean_Hajek_est - true_ATE,
+    #     'Hajek_Bias': mean_Hajek_est - true_GATE,
     #     'Hajek_Variance': var_Hajek_est,
     #     'Hajek_Standard_Deviation': np.sqrt(var_Hajek_est),
     #     'Total_Network_Nodes': N,
@@ -388,7 +388,7 @@ if __name__ == "__main__":
         # print("\n" + "="*80)
         # print("SIMULATION SUMMARY")
         # print("="*80)
-        # print(f"True ATE: {summary_results['TRUE_ATE']:.4f}")
+        # print(f"True GATE: {summary_results['TRUE_GATE']:.4f}")
         # print(f"Mean HT Estimate: {summary_results['HT_Estimate_Mean']:.4f}")
         # print(f"HT Bias: {summary_results['HT_Bias']:.4f}")
         # print(f"HT Standard Deviation: {summary_results['HT_Standard_Deviation']:.4f}")

@@ -106,4 +106,5 @@ def spatial_clustering_map(
     
     cluster_matrix = np.zeros((n, num_cells_per_dim**2))
     cluster_matrix[np.arange(n), cluster_map] = 1
-    return cluster_matrix
+    empty_clusters = np.sum(cluster_matrix, axis=0) == 0
+    return cluster_matrix[:, ~empty_clusters]

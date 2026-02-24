@@ -46,26 +46,21 @@ class InventoryMarkovChain:
         else:
             self.initial_state = initial_state
 
-
-        self.true_GATE = None
-        self.all_1_mean = None
-        self.all_0_mean = None
+        self.true_GATE_info = None
     
     def compute_move_up(self, treatment_tensor: np.ndarray, use_sigmoid: bool=True) -> np.ndarray:
         """
         Set the treatment tensor for the Markov Chain.
         """
-        if (treatment_tensor.shape[0], treatment_tensor.shape[1]) == (self.num_nodes, self.num_rounds):
-            self.treatment_tensor = treatment_tensor
-        else:
-            self.treatment_tensor = np.zeros((self.num_nodes, self.num_rounds,1))
+        if (treatment_tensor.shape[0], treatment_tensor.shape[1]) != (self.num_nodes, self.num_rounds):
+            treatment_tensor = np.zeros((self.num_nodes, self.num_rounds,1))
 
         denom = np.tensordot(self.adj_matrix, np.ones(treatment_tensor.shape), axes=([1],[0])) - 1
         competition = np.zeros(treatment_tensor.shape)
-        np.divide((np.tensordot(self.adj_matrix, self.treatment_tensor, axes=([1],[0])) - self.treatment_tensor), denom, out=competition, where=denom!=0)
+        np.divide((np.tensordot(self.adj_matrix, treatment_tensor, axes=([1],[0])) - treatment_tensor), denom, out=competition, where=denom!=0)
         competition = np.minimum(competition,0.75)
         competition = np.maximum(competition,0.25)
-        P_it = self.alpha_array[:,:,np.newaxis] + self.beta_array[:,:,np.newaxis] * self.treatment_tensor - self.gamma_array[:,:,np.newaxis] * competition
+        P_it = self.alpha_array[:,:,np.newaxis] + self.beta_array[:,:,np.newaxis] * treatment_tensor - self.gamma_array[:,:,np.newaxis] * competition
         if use_sigmoid:
             P_it = 1 / (1 + np.exp(-P_it))
         return P_it / (P_it + self.depart_array[:,:,np.newaxis])
@@ -76,19 +71,22 @@ class InventoryMarkovChain:
     
     # sim_config['initial_state'] * np.ones((sim_config['n']))
     def estimate_GATE(self, num_iterations = 1000):
-        if self.true_GATE == None:
+        if self.true_GATE_info == None:
             sim_results_0 = self.simulate_MC(np.zeros((self.num_nodes, self.num_rounds, num_iterations)), use_sigmoid=True)
             sim_results_1 = self.simulate_MC(np.ones((self.num_nodes, self.num_rounds,num_iterations)), use_sigmoid=True)
 
-            self.all_0_mean = np.mean(sim_results_0["rewards"])
-            self.all_1_mean = np.mean(sim_results_1["rewards"])
-            self.true_GATE = self.all_1_mean - self.all_0_mean
+            all_0_mean = np.mean(sim_results_0["rewards"])
+            all_1_mean = np.mean(sim_results_1["rewards"])
+            true_GATE = self.all_1_mean - self.all_0_mean
+            std_dev_GATE = np.std(sim_results_1["rewards"] - sim_results_0["rewards"])
 
             print("="*60+ "\nTRUE GATE (approximated using Monte Carlo)\n" + "="*60)
             print(f"Mean reward under all-1 vs. all-0: {self.all_1_mean:.4f} vs. {self.all_0_mean:.4f}  ")
             print(f"True GATE: {self.true_GATE:.4f}")
+            print(f"Std Dev of estimate: {std_dev_GATE}")
+            self.true_GATE_info = (true_GATE, all_1_mean, all_0_mean, std_dev_GATE)
 
-        return (self.true_GATE, self.all_1_mean, self.all_0_mean)
+        return self.true_GATE_info
     
     def simulate_MC(self, treatment_tensor: np.ndarray, use_sigmoid: bool=True) -> Dict:
         P_it = self.compute_move_up(treatment_tensor, use_sigmoid)

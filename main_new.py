@@ -7,30 +7,14 @@ import numpy as np
 from datetime import datetime
 from scipy import stats
 import matplotlib.pyplot as plt
+from joblib import Parallel, delayed
 
 # ================================================================================
 # CONFIG. PARAMETERS - Modify these to tune the simulation
 # ================================================================================
 
-# parameters: Network and spatial clustering
-N = 1                      # Number of nodes (must be perfect square if generating lattice graph)
-NUM_CELLS_PER_DIM = 1              # Width of squares for cluster randomization
-KAPPA = 0.1                      # Kappa parameter for interference graph generation
-
-# parameters: Design and estimator 
-T = 100                      # Number of time periods
-TIME_BLOCK_LENGTH = 50         # Length of time blocks for cluster randomization
-NUM_STATES = 30                 # Number of states in the MDP
-
-# parameters: Simulation
-INITIAL_STATE = 15              # Initial state for MDP simulation
-NUM_MONTE_CARLO_ATE = 1000       # Number of simulations for Monte Carlo ATE approximation
-NUM_PROP_SCORE_SIMS = 1000      # Number of simulations for propensity score computation
-NUM_ITER_EST = 10000               # Number of iterations for main HT/Hajek estimator simulation
-
 # Print and save
 OUTPUT_DIR = "results"         # Directory to save results
-OUTPUT_FILENAME = "sim_results.csv"  # CSV filename for results
 
 # ================================================================================
 # Class for saving
@@ -76,16 +60,28 @@ def main():
     original_stdout = sys.stdout
     sys.stdout = logger
 
+    kappa = 0.035
+    num_cell_per_dim = [10,20,30,40,50,60,70]
+    loaded_network = np.load('hotel_network.npz')
+    coords_array = loaded_network['coords_array']
+    max_inventory = loaded_network['max_inventory']
+    initial_state = loaded_network['initial_state']
+
     sim_config = {
-        "n": N,
-        "kappa": KAPPA,
-        "T": T,
-        "num_states": NUM_STATES,
-        "initial_state": INITIAL_STATE,
-        "num_cells_per_dim":  NUM_CELLS_PER_DIM,
-        "time_block_length": TIME_BLOCK_LENGTH,
+        'maximum_T': 10**5,
+        'num_cells_per_dim': num_cell_per_dim,
+        'time_block_length': [40], #[20,40,60,80,100], #[3,6,9],
+        'recency': [], #[0,2,4,6],
+        'delta': [], #[0,0.1,0.2,0.3],
+        'burn_in': [0], #[0,2,4,6],
+        'num_monte_carlo_gate': 10**3,
+        'num_iter_est': 10**4,
+        'coords_array': coords_array,
+        'kappa': kappa,
+        'max_inventory': max_inventory,
+        'initial_state': initial_state,
     }
-    all_results = simulation_setup.run_simulation(sim_config,NUM_MONTE_CARLO_ATE,NUM_ITER_EST)
+    all_results = simulation_setup.run_simulation(sim_config)
 
     # Restore stdout and close temporary log file
     sys.stdout = original_stdout
