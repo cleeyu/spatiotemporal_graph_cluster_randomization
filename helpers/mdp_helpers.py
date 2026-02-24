@@ -15,6 +15,7 @@ class InventoryMarkovChain:
             C_beta: np.ndarray, # size is n x T
             C_gamma: np.ndarray, # size is n x T
             C_depart: np.ndarray, # size is n x T
+            initial_state: np.ndarray
             ):
         """
         Initialize the Markov Chain.
@@ -39,7 +40,16 @@ class InventoryMarkovChain:
         self.B = C_baseline
         self.R = np.divide(C_slope, self.max_inventory[:,np.newaxis])
 
-        self.current_state = None
+        if initial_state.shape != (self.num_nodes,):
+            print("Invalid state vector shape ",str(initial_state.shape),", should be (num_nodes,) starting all states at zero")
+            self.initial_state = np.zeros((self.num_nodes))
+        else:
+            self.initial_state = initial_state
+
+
+        self.true_GATE = None
+        self.all_1_mean = None
+        self.all_0_mean = None
     
     def compute_move_up(self, treatment_tensor: np.ndarray, use_sigmoid: bool=True) -> np.ndarray:
         """
@@ -64,15 +74,27 @@ class InventoryMarkovChain:
         """ Compute reward for a given state at a given time """
         return self.B[:,:,np.newaxis] + self.R[:,:,np.newaxis] * state_trajectory
     
-    def simulate_MC(self, state_vector: np.ndarray, treatment_tensor: np.ndarray, use_sigmoid: bool=True) -> Dict:
+    # sim_config['initial_state'] * np.ones((sim_config['n']))
+    def estimate_GATE(self, num_iterations = 1000):
+        if self.true_GATE == None:
+            sim_results_0 = self.simulate_MC(np.zeros((self.num_nodes, self.num_rounds, num_iterations)), use_sigmoid=True)
+            sim_results_1 = self.simulate_MC(np.ones((self.num_nodes, self.num_rounds,num_iterations)), use_sigmoid=True)
+
+            self.all_0_mean = np.mean(sim_results_0["rewards"])
+            self.all_1_mean = np.mean(sim_results_1["rewards"])
+            self.true_GATE = self.all_1_mean - self.all_0_mean
+
+            print("="*60+ "\nTRUE GATE (approximated using Monte Carlo)\n" + "="*60)
+            print(f"Mean reward under all-1 vs. all-0: {self.all_1_mean:.4f} vs. {self.all_0_mean:.4f}  ")
+            print(f"True GATE: {self.true_GATE:.4f}")
+
+        return (self.true_GATE, self.all_1_mean, self.all_0_mean)
+    
+    def simulate_MC(self, treatment_tensor: np.ndarray, use_sigmoid: bool=True) -> Dict:
         P_it = self.compute_move_up(treatment_tensor, use_sigmoid)
         num_sims = P_it.shape[2]
-
-        if state_vector.shape != (self.num_nodes,):
-            print("Invalid state vector shape ",str(state_vector.shape),", should be (num_nodes,) starting all states at zero")
-            state_vector = np.zeros((self.num_nodes))
         
-        state_vector = np.outer(state_vector, np.ones((num_sims)))
+        state_vector = np.outer(self.initial_state, np.ones((num_sims)))
 
         not_lazy_mask = (np.random.rand(self.num_nodes, self.num_rounds, num_sims) >= self.laziness_array[:,:,np.newaxis]).astype(int)
         move_up_mask = (np.random.rand(self.num_nodes, self.num_rounds, num_sims) <= P_it).astype(int)

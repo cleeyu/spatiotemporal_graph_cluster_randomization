@@ -141,19 +141,19 @@ def horvitz_thompson(
     HT_weights_0 = np.zeros((np.shape(propensity_0_array)))
     np.divide(1, propensity_0_array, out = HT_weights_0, where=propensity_0_array != 0)
     Y_hat_0 = exposure_0_array * rewards_array * HT_weights_0[:,:,np.newaxis]
-    ate_estimate_ht_arm0 = np.average(Y_hat_0, axis = (0,1))
+    gate_estimate_ht_arm0 = np.average(Y_hat_0, axis = (0,1))
 
     HT_weights_1 = np.zeros((np.shape(propensity_1_array)))
     np.divide(1, propensity_1_array, out = HT_weights_1, where=propensity_1_array != 0)
     Y_hat_1 = exposure_1_array * rewards_array * HT_weights_1[:,:,np.newaxis]
-    ate_estimate_ht_arm1 = np.average(Y_hat_1, axis = (0,1))
+    gate_estimate_ht_arm1 = np.average(Y_hat_1, axis = (0,1))
     
-    ate_estimate_ht = ate_estimate_ht_arm1 - ate_estimate_ht_arm0
+    gate_estimate_ht = gate_estimate_ht_arm1 - gate_estimate_ht_arm0
 
     return {
-        'ate_estimate_arm0': ate_estimate_ht_arm0,
-        'ate_estimate_arm1': ate_estimate_ht_arm1,
-        'ate_estimate': ate_estimate_ht,
+        'gate_estimate_arm0': gate_estimate_ht_arm0,
+        'gate_estimate_arm1': gate_estimate_ht_arm1,
+        'gate_estimate': gate_estimate_ht,
     }
 
 
@@ -175,23 +175,23 @@ def hajek(
     Y_hat_0 = np.sum(exposure_0_array * rewards_array * HT_weights_0[:,:,np.newaxis], axis = (0,1))
     denom_0 = np.sum(exposure_0_array * HT_weights_0[:,:,np.newaxis], axis = (0,1))
 
-    ate_estimate_hajek_arm0 = np.zeros(num_sims)
-    np.divide(Y_hat_0, denom_0, out = ate_estimate_hajek_arm0, where=denom_0 != 0)
+    gate_estimate_hajek_arm0 = np.zeros(num_sims)
+    np.divide(Y_hat_0, denom_0, out = gate_estimate_hajek_arm0, where=denom_0 != 0)
 
     HT_weights_1 = np.zeros((np.shape(propensity_1_array)))
     np.divide(1, propensity_1_array, out = HT_weights_1, where=propensity_1_array != 0)
     Y_hat_1 = np.sum(exposure_1_array * rewards_array * HT_weights_1[:,:,np.newaxis], axis = (0,1))
     denom_1 = np.sum(exposure_1_array * HT_weights_1[:,:,np.newaxis], axis = (0,1))
 
-    ate_estimate_hajek_arm1 = np.zeros(num_sims)
-    np.divide(Y_hat_1, denom_1, out = ate_estimate_hajek_arm1, where=denom_1 != 0)
+    gate_estimate_hajek_arm1 = np.zeros(num_sims)
+    np.divide(Y_hat_1, denom_1, out = gate_estimate_hajek_arm1, where=denom_1 != 0)
     
-    ate_estimate_hajek = ate_estimate_hajek_arm1 - ate_estimate_hajek_arm0
+    gate_estimate_hajek = gate_estimate_hajek_arm1 - gate_estimate_hajek_arm0
 
     return {
-        'ate_estimate_arm0': ate_estimate_hajek_arm0,
-        'ate_estimate_arm1': ate_estimate_hajek_arm1,
-        'ate_estimate': ate_estimate_hajek,
+        'gate_estimate_arm0': gate_estimate_hajek_arm0,
+        'gate_estimate_arm1': gate_estimate_hajek_arm1,
+        'gate_estimate': gate_estimate_hajek,
     }
 
 # =============================================================================
@@ -220,19 +220,19 @@ def diff_means(
     Y_hat_0 = np.sum(exposure_0_array * rewards_array, axis = (0,1))
     denom_0 = np.sum(exposure_0_array, axis = (0,1))
 
-    ate_estimate_DM_arm0 = np.zeros(num_sims)
-    np.divide(Y_hat_0, denom_0, out = ate_estimate_DM_arm0, where=denom_0 != 0)
+    gate_estimate_DM_arm0 = np.zeros(num_sims)
+    np.divide(Y_hat_0, denom_0, out = gate_estimate_DM_arm0, where=denom_0 != 0)
 
     Y_hat_1 = np.sum(exposure_1_array * rewards_array, axis = (0,1))
     denom_1 = np.sum(exposure_1_array, axis = (0,1))
 
-    ate_estimate_DM_arm1 = np.zeros(num_sims)
-    np.divide(Y_hat_1, denom_1, out = ate_estimate_DM_arm1, where=denom_1 != 0)
+    gate_estimate_DM_arm1 = np.zeros(num_sims)
+    np.divide(Y_hat_1, denom_1, out = gate_estimate_DM_arm1, where=denom_1 != 0)
     
-    ate_estimate_DM = ate_estimate_DM_arm1 - ate_estimate_DM_arm0
+    gate_estimate_DM = gate_estimate_DM_arm1 - gate_estimate_DM_arm0
 
     return {
-        'ate_estimate_arm0': ate_estimate_DM_arm0,
-        'ate_estimate_arm1': ate_estimate_DM_arm1,
-        'ate_estimate': ate_estimate_DM,
+        'gate_estimate_arm0': gate_estimate_DM_arm0,
+        'gate_estimate_arm1': gate_estimate_DM_arm1,
+        'gate_estimate': gate_estimate_DM,
     }

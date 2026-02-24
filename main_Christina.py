@@ -157,14 +157,15 @@ def main():
         C_alpha = C_alpha,
         C_beta = C_beta,
         C_gamma = C_gamma,
-        C_depart = C_depart)
+        C_depart = C_depart,
+        initial_state = INITIAL_STATE * np.ones((sim_config['n'])))
 
     # Step 2: Find true ATE using Monte Carlo
     print("\nStep 2: Computing true ATE using Monte Carlo...")
     start_time = time.time()
 
-    sim_results_0 = MC.simulate_MC(INITIAL_STATE * np.ones((sim_config['n'])), np.zeros((sim_config['n'], sim_config['T'],NUM_MONTE_CARLO_ATE)), use_sigmoid=True)
-    sim_results_1 = MC.simulate_MC(INITIAL_STATE * np.ones((sim_config['n'])), np.ones((sim_config['n'], sim_config['T'],NUM_MONTE_CARLO_ATE)), use_sigmoid=True)
+    sim_results_0 = MC.simulate_MC(np.zeros((sim_config['n'], sim_config['T'],NUM_MONTE_CARLO_ATE)), use_sigmoid=True)
+    sim_results_1 = MC.simulate_MC(np.ones((sim_config['n'], sim_config['T'],NUM_MONTE_CARLO_ATE)), use_sigmoid=True)
 
     all_0_mean = np.mean(sim_results_0["rewards"])
     all_1_mean = np.mean(sim_results_1["rewards"])
@@ -204,17 +205,17 @@ def main():
     arms_array = stats_helpers.generate_cluster_treatments(cluster_matrix,time_cluster_matrix,num_iter_est)
     exposure_results = stats_helpers.exposure_mapping(arms_array, adj_matrix, time_adj_matrix, sim_config['delta'])
     
-    sim_results = MC.simulate_MC(INITIAL_STATE * np.ones((sim_config['n'])), arms_array, use_sigmoid=True)
+    sim_results = MC.simulate_MC(arms_array, use_sigmoid=True)
     rewards = sim_results["rewards"]
 
     print("\nDone with simulation, computing HT and Hajek estimates")
 
     # CHECK with deteriministic rewards set to be all_0_mean for all control units and all_1_mean for all treated units
     ht_fake_results = stats_helpers.horvitz_thompson(all_0_mean * (1- arms_array) + all_1_mean * arms_array,exposure_results['exposure_1'],exposure_results['exposure_0'],propensity_1_array,propensity_0_array)
-    ate_estimate_fake_ht = ht_fake_results['ate_estimate']
+    gate_estimate_fake_ht = ht_fake_results['gate_estimate']
 
     print("\n" + "="*60 + "\nFAKE REWARDS HORVITZ-THOMPSON ESTIMATES\n" + "="*60)
-    mean_fake_HT_est, var_fake_HT_est = ate_estimate_fake_ht.mean(), ate_estimate_fake_ht.var()
+    mean_fake_HT_est, var_fake_HT_est = gate_estimate_fake_ht.mean(), gate_estimate_fake_ht.var()
     print(f"Mean HT estimate: {mean_fake_HT_est:.4f}")
     print(f"Bias: {mean_fake_HT_est - true_ATE:.4f}")
     print(f"Variance of HT estimate: {var_fake_HT_est:.4f}")
@@ -222,10 +223,10 @@ def main():
 
     # CHECK with the vanilla HT, using exposure mapping as W and 1-W, and ground truth 0.5 propensity scores
     ht_vanilla_results = stats_helpers.horvitz_thompson(rewards,arms_array,1-arms_array,0.5*np.ones(propensity_1_array.shape),0.5*np.ones(propensity_0_array.shape))
-    ate_estimate_vanilla_ht = ht_vanilla_results['ate_estimate']
+    gate_estimate_vanilla_ht = ht_vanilla_results['gate_estimate']
 
     print("\n" + "="*60 + "\nVANILLA HORVITZ-THOMPSON ESTIMATES\n" + "="*60)
-    mean_vanilla_HT_est, var_vanilla_HT_est = ate_estimate_vanilla_ht.mean(), ate_estimate_vanilla_ht.var()
+    mean_vanilla_HT_est, var_vanilla_HT_est = gate_estimate_vanilla_ht.mean(), gate_estimate_vanilla_ht.var()
     print(f"Mean HT estimate: {mean_vanilla_HT_est:.4f}")
     print(f"Bias: {mean_vanilla_HT_est - true_ATE:.4f}")
     print(f"Variance of HT estimate: {var_vanilla_HT_est:.4f}")
@@ -233,10 +234,10 @@ def main():
 
     # HT with interference exposure mapping
     ht_results = stats_helpers.horvitz_thompson(rewards,exposure_results['exposure_1'],exposure_results['exposure_0'],propensity_1_array,propensity_0_array)
-    ate_estimate_ht = ht_results['ate_estimate']
+    gate_estimate_ht = ht_results['gate_estimate']
     
     print("\n" + "="*60 + "\nHORVITZ-THOMPSON ESTIMATES\n" + "="*60)
-    mean_HT_est, var_HT_est = ate_estimate_ht.mean(), ate_estimate_ht.var()
+    mean_HT_est, var_HT_est = gate_estimate_ht.mean(), gate_estimate_ht.var()
     print(f"Mean HT estimate: {mean_HT_est:.4f}")
     print(f"Bias: {mean_HT_est - true_ATE:.4f}")
     print(f"Variance of HT estimate: {var_HT_est:.4f}")
@@ -244,10 +245,10 @@ def main():
 
     # Hajek with interference exposure mapping
     hajek_results = stats_helpers.hajek(rewards,exposure_results['exposure_1'],exposure_results['exposure_0'],propensity_1_array,propensity_0_array)
-    ate_estimate_hajek = hajek_results['ate_estimate']
+    gate_estimate_hajek = hajek_results['gate_estimate']
 
     print("\n" + "="*60 + "\nHAJEK ESTIMATES\n" + "="*60)
-    mean_Hajek_est, var_Hajek_est = ate_estimate_hajek.mean(), ate_estimate_hajek.var()
+    mean_Hajek_est, var_Hajek_est = gate_estimate_hajek.mean(), gate_estimate_hajek.var()
     print(f"Mean Hajek estimate: {mean_Hajek_est:.4f}")
     print(f"Bias: {mean_Hajek_est - true_ATE:.4f}")
     print(f"Variance of Hajek estimate: {var_Hajek_est:.4f}")
@@ -256,10 +257,10 @@ def main():
     # Diff in Means with burn in
     burn_in = 0
     DM_results = stats_helpers.diff_means(rewards,arms_array,sim_config['time_block_length'], burn_in)
-    ate_estimate_DM = DM_results['ate_estimate']
+    gate_estimate_DM = DM_results['gate_estimate']
 
     print("\n" + "="*60 + "\nDIFF-IN-MEANS ESTIMATES\n" + "="*60)
-    mean_DM_est, var_DM_est = ate_estimate_DM.mean(), ate_estimate_DM.var()
+    mean_DM_est, var_DM_est = gate_estimate_DM.mean(), gate_estimate_DM.var()
     print(f"Mean DM estimate: {mean_DM_est:.4f}")
     print(f"Bias: {mean_DM_est - true_ATE:.4f}")
     print(f"Variance of DM estimate: {var_DM_est:.4f}")
@@ -275,8 +276,8 @@ def main():
     # # This loop is purely to print logs to the file and terminal in order to be somewhat backwards compatible in debugging
     # # But the calculation is already done so we could also skip the below loop and just save the above tensorized results dirrectly
     # for iter_idx in range(num_iter_est):
-    #     est_result={'ate_estimate_ht': ate_estimate_ht[iter_idx],
-    #                 'ate_estimate_hajek': ate_estimate_hajek[iter_idx],
+    #     est_result={'gate_estimate_ht': gate_estimate_ht[iter_idx],
+    #                 'gate_estimate_hajek': gate_estimate_hajek[iter_idx],
     #             'exposure_1': exposure_results['exposure_1'][:,:,iter_idx],
     #             'exposure_0': exposure_results['exposure_0'][:,:,iter_idx],
     #             'rewards': sim_results["rewards"][:,:,iter_idx]
@@ -285,11 +286,11 @@ def main():
     #     # Store detailed results for this iteration with readable column names
     #     iteration_result = {
     #         'Iteration_Number': iter_idx + 1,  # 1-indexed for readability
-    #         'HT_Estimate': est_result['ate_estimate_ht'],
-    #         'Hajek_Estimate': est_result['ate_estimate_hajek'],
+    #         'HT_Estimate': est_result['gate_estimate_ht'],
+    #         'Hajek_Estimate': est_result['gate_estimate_hajek'],
     #         'True_ATE': true_ATE,
-    #         'Bias_HT': est_result['ate_estimate_ht'] - true_ATE,
-    #         'Bias_Hajek': est_result['ate_estimate_hajek'] - true_ATE,
+    #         'Bias_HT': est_result['gate_estimate_ht'] - true_ATE,
+    #         'Bias_Hajek': est_result['gate_estimate_hajek'] - true_ATE,
     #         'Mean_Reward_Treatment_Group': est_result['rewards'][np.nonzero(est_result['exposure_1'])].mean() if len(np.nonzero(est_result['exposure_1'])[0]) > 0 else 0,
     #         'Mean_Reward_Control_Group': est_result['rewards'][np.nonzero(est_result['exposure_0'])].mean() if len(np.nonzero(est_result['exposure_0'])[0]) > 0 else 0,
     #         'Number_Treatment_Units': len(np.nonzero(est_result['exposure_1'])[0]),
@@ -306,7 +307,7 @@ def main():
     #         start_time=start_time,
     #         est_result=est_result,
     #         rewards_array=sim_results["rewards"][:,:,iter_idx],
-    #         ht_result=ate_estimate_ht,
+    #         ht_result=gate_estimate_ht,
     #         true_ATE=true_ATE,
     #         print_freq=int(num_iter_est/1)
     #     )    
@@ -354,8 +355,8 @@ def main():
     #     detailed_results=detailed_results, 
     #     output_dir=OUTPUT_DIR, 
     #     filename=OUTPUT_FILENAME,
-    #     ht_result=ate_estimate_ht,
-    #     hajek_result=ate_estimate_hajek,
+    #     ht_result=gate_estimate_ht,
+    #     hajek_result=gate_estimate_hajek,
     #     propensity_1_array=propensity_1_array,
     #     propensity_0_array=propensity_0_array,
     #     adj_matrix=adj_matrix,
