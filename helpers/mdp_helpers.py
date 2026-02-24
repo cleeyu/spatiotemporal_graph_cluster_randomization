@@ -77,12 +77,12 @@ class InventoryMarkovChain:
 
             all_0_mean = np.mean(sim_results_0["rewards"])
             all_1_mean = np.mean(sim_results_1["rewards"])
-            true_GATE = self.all_1_mean - self.all_0_mean
+            true_GATE = all_1_mean - all_0_mean
             std_dev_GATE = np.std(sim_results_1["rewards"] - sim_results_0["rewards"])
 
             print("="*60+ "\nTRUE GATE (approximated using Monte Carlo)\n" + "="*60)
-            print(f"Mean reward under all-1 vs. all-0: {self.all_1_mean:.4f} vs. {self.all_0_mean:.4f}  ")
-            print(f"True GATE: {self.true_GATE:.4f}")
+            print(f"Mean reward under all-1 vs. all-0: {all_1_mean:.4f} vs. {all_0_mean:.4f}  ")
+            print(f"True GATE: {true_GATE:.4f}")
             print(f"Std Dev of estimate: {std_dev_GATE}")
             self.true_GATE_info = (true_GATE, all_1_mean, all_0_mean, std_dev_GATE)
 
