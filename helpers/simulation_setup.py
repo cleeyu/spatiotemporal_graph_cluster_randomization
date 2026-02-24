@@ -156,7 +156,6 @@ def print_propensity_stats(propensity_1_array, propensity_0_array):
     print(f"%nz in emp prop_score_0, prop_score_1: {len(np.nonzero(propensity_0_array)[0])/(propensity_0_array.size)*100:.2f}%, {len(np.nonzero(propensity_1_array)[0])/(propensity_1_array.size)*100:.2f}%")
 
 def print_logs(all_results, true_ATE):
-    # all_results.to_csv('all_results.csv')
     aggregate_stats = all_results.groupby('name').agg({'gate_estimate': ['mean', 'std']})
     aggregate_stats[('gate_estimate','bias')] = aggregate_stats[('gate_estimate','mean')] - true_ATE
 

@@ -68,6 +68,14 @@ from helpers import utils, graph_helpers, mdp_helpers, stats_helpers, print_nice
 # ================================================================================
 
 def main():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)  # Create output directory if it doesn't exist
+    
+    # Set up logging to temporary file first (will move to correct folder later)
+    temp_log_path = os.path.join("results", "temp_simulation_log.txt")
+    logger = LogToFile(temp_log_path)
+    original_stdout = sys.stdout
+    sys.stdout = logger
+
     sim_config = {
         "n": N,
         "kappa": KAPPA,
@@ -77,7 +85,25 @@ def main():
         "num_cells_per_dim":  NUM_CELLS_PER_DIM,
         "time_block_length": TIME_BLOCK_LENGTH,
     }
-    simulation_setup.run_simulation(sim_config,NUM_MONTE_CARLO_ATE,NUM_ITER_EST)
+    all_results = simulation_setup.run_simulation(sim_config,NUM_MONTE_CARLO_ATE,NUM_ITER_EST)
+
+    # Restore stdout and close temporary log file
+    sys.stdout = original_stdout
+    logger.close()
+    
+    # Create timestamped subfolder
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    run_folder = os.path.join("results", f"run_{timestamp}")
+    os.makedirs(run_folder, exist_ok=True)
+
+    # Move log file to the correct results folder
+    final_log_path = os.path.join(run_folder, "_simulation_log.txt")
+    import shutil
+    shutil.move(temp_log_path, final_log_path)
+
+    all_results.to_csv(run_folder+'/all_results.csv')
+    
+    print(f"Simulation completed. Log saved to: {final_log_path}")
 
 if __name__ == "__main__":
     """Run the simulation when script is executed directly"""
