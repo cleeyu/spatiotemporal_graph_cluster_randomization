@@ -41,6 +41,7 @@ def setup_MC_model(adj_matrix, T, max_inventory, initial_state):
     C_beta = np.random.normal(loc = 10, scale = 4, size = ((n,T)))
     C_gamma = 0.5*np.random.random((n,T)) * C_beta
     C_depart = np.random.random((n,T))
+    np.savez('MC_parameters.npz',C_baseline,C_slope,C_lazy,C_alpha,C_beta,C_gamma,C_depart)
 
     MC_model = mdp_helpers.InventoryMarkovChain(
         max_inventory=max_inventory,
@@ -53,7 +54,25 @@ def setup_MC_model(adj_matrix, T, max_inventory, initial_state):
         C_beta = C_beta,
         C_gamma = C_gamma,
         C_depart = C_depart,
-        initial_state = initial_state * np.ones(n))
+        initial_state = initial_state)
+    
+    return MC_model
+
+def load_MC_model(adj_matrix, T, max_inventory, initial_state,MC_param_filenme):
+    MC_parameters = np.load(MC_param_filenme)
+
+    MC_model = mdp_helpers.InventoryMarkovChain(
+        max_inventory=max_inventory,
+        adj_matrix=adj_matrix,
+        num_rounds=T,
+        C_baseline = MC_parameters['arr_0'],
+        C_slope= MC_parameters['arr_1'],
+        C_lazy = MC_parameters['arr_2'],
+        C_alpha = MC_parameters['arr_3'],
+        C_beta = MC_parameters['arr_4'],
+        C_gamma = MC_parameters['arr_5'],
+        C_depart = MC_parameters['arr_6'],
+        initial_state = initial_state)
     
     return MC_model
 
