@@ -6,6 +6,7 @@ from datetime import datetime
 from scipy import stats
 import matplotlib.pyplot as plt
 from joblib import Parallel, delayed
+import pickle
 
 from helpers import utils, graph_helpers, mdp_helpers, stats_helpers, print_nicely
 
@@ -30,7 +31,7 @@ def setup_Hotel_Dataset(filename, quantization):
 
     return (coord, capacities)
 
-def setup_MC_model(adj_matrix, T, max_inventory, initial_state):
+def setup_MC_model(adj_matrix, T, max_inventory, initial_state, save_f = None):
     n = adj_matrix.shape[0]
 
     # Generate the Markov Chain 
@@ -41,7 +42,8 @@ def setup_MC_model(adj_matrix, T, max_inventory, initial_state):
     C_beta = np.random.normal(loc = 10, scale = 4, size = ((n,T)))
     C_gamma = 0.5*np.random.random((n,T)) * C_beta
     C_depart = np.random.random((n,T))
-    np.savez('MC_parameters.npz',C_baseline,C_slope,C_lazy,C_alpha,C_beta,C_gamma,C_depart)
+    if save_f != None:
+        np.savez(save_f,C_baseline,C_slope,C_lazy,C_alpha,C_beta,C_gamma,C_depart)
 
     MC_model = mdp_helpers.InventoryMarkovChain(
         max_inventory=max_inventory,
@@ -58,25 +60,25 @@ def setup_MC_model(adj_matrix, T, max_inventory, initial_state):
     
     return MC_model
 
-def load_MC_model(adj_matrix, T, max_inventory, initial_state,MC_param_filenme):
-    MC_parameters = np.load(MC_param_filenme)
+def load_MC_model(adj_matrix, T, max_inventory, initial_state,MC_param_filename):
+    MC_parameters = np.load(MC_param_filename)
 
     MC_model = mdp_helpers.InventoryMarkovChain(
         max_inventory=max_inventory,
         adj_matrix=adj_matrix,
         num_rounds=T,
-        C_baseline = MC_parameters['arr_0'],
-        C_slope= MC_parameters['arr_1'],
-        C_lazy = MC_parameters['arr_2'],
-        C_alpha = MC_parameters['arr_3'],
-        C_beta = MC_parameters['arr_4'],
-        C_gamma = MC_parameters['arr_5'],
-        C_depart = MC_parameters['arr_6'],
+        C_baseline = MC_parameters['arr_0'][:,:T],
+        C_slope= MC_parameters['arr_1'][:,:T],
+        C_lazy = MC_parameters['arr_2'][:,:T],
+        C_alpha = MC_parameters['arr_3'][:,:T],
+        C_beta = MC_parameters['arr_4'][:,:T],
+        C_gamma = MC_parameters['arr_5'][:,:T],
+        C_depart = MC_parameters['arr_6'][:,:T],
         initial_state = initial_state)
     
     return MC_model
 
-def simulate_experiment(ncpd,tbl,coords_array,num_rounds,MC_model,num_iter_est):
+def simulate_experiment(ncpd,tbl,coords_array,num_rounds,MC_model,num_iter_est,save_data_folder = None):
     # Setup randomized design
     cluster_matrix = graph_helpers.spatial_clustering_map(coords_array, ncpd)
     time_cluster_matrix = stats_helpers.generate_time_blocks(num_rounds, tbl)
@@ -84,9 +86,14 @@ def simulate_experiment(ncpd,tbl,coords_array,num_rounds,MC_model,num_iter_est):
     arms_array = stats_helpers.generate_cluster_treatments(cluster_matrix,time_cluster_matrix,num_iter_est)   
     sim_results = MC_model.simulate_MC(arms_array, use_sigmoid=True)
     rewards = sim_results["rewards"]
+    
+    if save_data_folder != None:
+        np.save(save_data_folder+f'/arms_array_{ncpd}_{tbl}.npy', arms_array)
+        np.save(save_data_folder+f'/rewards_{ncpd}_{tbl}.npy', rewards)
+
     return (ncpd,tbl,arms_array,rewards)
 
-def run_simulation(sim_configs):
+def run_simulation(sim_configs, save_data_f, save_estimates_f, load_MC_param_file = None):
 
     # unpack variables from sim_configs
     num_rounds = sim_configs['maximum_T']
@@ -111,27 +118,40 @@ def run_simulation(sim_configs):
     adj_matrix = graph_helpers.build_adjacency_matrix_from_coords(coords_array, kappa)
 
     # Setup MC model
-    MC_model = setup_MC_model(adj_matrix, num_rounds, max_inventory, initial_state)
+    if load_MC_param_file == None:
+        MC_model = setup_MC_model(adj_matrix, num_rounds, max_inventory, initial_state)
+    else:
+        MC_model = load_MC_model(adj_matrix, num_rounds, max_inventory, initial_state, load_MC_param_file)
 
     # Find true GATE using Monte Carlo
     print("\nStep 2: Computing true GATE using Monte Carlo...")
-    (true_GATE, all_1_mean, all_0_mean,std_dev_GATE) = MC_model.estimate_GATE(num_sims_apx_GATE)
-    
+    results_GATE = MC_model.estimate_GATE(num_sims_apx_GATE)
+    true_GATE = results_GATE[0]
+    all_1_mean = results_GATE[1]
+    all_0_mean = results_GATE[2]
+    std_dev_GATE = results_GATE[3]
+    diff_means = results_GATE[4]
+
+    print(f"GATE Estimate: {true_GATE:.4f}")
+    print(f"Std Dev: {std_dev_GATE:.4f}")
+
     total_runtime_seconds = time.time() - start_time
     print(f"Elapsed time: {total_runtime_seconds:.2f} seconds ({total_runtime_seconds/60:.2f} minutes)")
 
-    # Step 3: Sample design and run smulation
+    # Sample design and run simulation
     print(f"\nStep 3: Generating treatment vectors and running estimator simulation")
 
     pairs = [(ncpd,tbl) for ncpd in num_cells_per_dim for tbl in time_block_length]
     joblib_results = Parallel(n_jobs=-1)(
         delayed(simulate_experiment)(ncpd,tbl,coords_array,num_rounds,MC_model,num_iter_est) for ncpd,tbl in pairs
     )
+    with open(save_data_f, 'wb') as f:
+        pickle.dump(joblib_results, f) #    
 
     total_runtime_seconds = time.time() - start_time
     print(f"Elapsed time: {total_runtime_seconds:.2f} seconds ({total_runtime_seconds/60:.2f} minutes)")
 
-    # Step 4: Compute estimates
+    # Compute estimates
     print("\nStep 4:Compute estimates")
     parameter_data_combo = [(r,d,data) for r in recency for d in delta for data in joblib_results]
     HT_Hajek_results = Parallel(n_jobs=-1)(
@@ -144,15 +164,14 @@ def run_simulation(sim_configs):
     )
     all_results = pd.concat([all_results,pd.concat(DM_results, ignore_index=True)],axis=0, join='outer', ignore_index=True)
 
-    all_results['n'] = n
     all_results['kappa'] = kappa
-    all_results['T'] = num_rounds
     all_results['true_GATE'] = true_GATE
 
     total_runtime_seconds = time.time() - start_time
     print(f"Elapsed time: {total_runtime_seconds:.2f} seconds ({total_runtime_seconds/60:.2f} minutes)")
 
     print_logs(all_results)
+    all_results.to_csv(save_estimates_f)
 
     return all_results
 
@@ -189,7 +208,9 @@ def compute_HT_Hajek_estimates(recency,delta,data,adj_matrix, truncate = None):
     df_HT['delta'] = delta
     df_HT['num_cells_per_dim'] = data[0]
     df_HT['time_block_length'] = data[1]
- 
+    df_HT['n'] = rewards.shape[0]
+    df_HT['T'] = num_rounds
+    
     # Hajek with interference exposure mapping
     hajek_results = stats_helpers.hajek(rewards,exposure_results['exposure_1'],exposure_results['exposure_0'],propensity_1_array,propensity_0_array)
     df_Hajek = pd.DataFrame(hajek_results)
@@ -199,6 +220,8 @@ def compute_HT_Hajek_estimates(recency,delta,data,adj_matrix, truncate = None):
     df_Hajek['delta'] = delta
     df_Hajek['num_cells_per_dim'] = num_cells_per_dim
     df_Hajek['time_block_length'] = time_block_length
+    df_Hajek['n'] = rewards.shape[0]
+    df_Hajek['T'] = num_rounds
 
     # Calculate total simulation runtime
     total_runtime_seconds = time.time() - start_time
@@ -229,6 +252,8 @@ def compute_DM_estimates(burn_in, data,truncate = None):
         df_DM['burn-in'] = b
         all_results = pd.concat([all_results,df_DM],axis=0, join='outer', ignore_index=True)
 
+    all_results['n'] = rewards.shape[0]
+    all_results['T'] = rewards.shape[1]
     all_results['num_cells_per_dim'] = num_cells_per_dim
     all_results['time_block_length'] = time_block_length
 

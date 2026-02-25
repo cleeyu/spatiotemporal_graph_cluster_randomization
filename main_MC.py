@@ -42,40 +42,48 @@ sys.path.append(parent_dir)
 from helpers import utils, graph_helpers, mdp_helpers, stats_helpers, print_nicely, simulation_setup
 
 def main():
-    os.makedirs(OUTPUT_DIR, exist_ok=True)  # Create output directory if it doesn't exist
+    network = 'Hotel' # 'Hotel' or 'Uniform'
+
+    # Create timestamped subfolder
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    run_folder = os.path.join(OUTPUT_DIR, f"run_MC_{network}_{timestamp}")
+    os.makedirs(run_folder, exist_ok=True)
+    print(f"Saving data to {run_folder}")
     
-    # Set up logging to temporary file first (will move to correct folder later)
-    temp_log_path = os.path.join("results", "temp_MC_simulation_log.txt")
-    logger = LogToFile(temp_log_path)
+    log_path = os.path.join(run_folder, "_MC_simulation_log.txt")
+    logger = LogToFile(log_path)
     original_stdout = sys.stdout
     sys.stdout = logger
 
-    # # n_max = 1000
-    # # coords_array = graph_helpers.generate_random_points(n_max)
-    # # max_inventory = 30*np.ones(n_max)
-    # # initial_state = (np.random.random(max_inventory.shape) * max_inventory).astype(int)
-    # # np.savez('unifom_spatial_network.npz', coords_array=coords_array, max_inventory = max_inventory, initial_state = initial_state)  
-    # n = 100
-    # kappa = [0.2] # kappa = [0.1, 0.15, 0.2, 0.25, 0.3] 
-    # loaded_network = np.load('unifom_spatial_network.npz')
-    # coords_array = loaded_network['coords_array'][:n,:]
-    # max_inventory = loaded_network['max_inventory'][:n]
-    # initial_state = loaded_network['initial_state'][:n]
+    if network == 'Uniform':
+        n = 100
+        kappa = 0.2 # kappa = [0.1, 0.15, 0.2, 0.25, 0.3] 
+        loaded_network = np.load('unifom_spatial_network.npz')
+        coords_array = loaded_network['coords_array'][:n,:]
+        max_inventory = loaded_network['max_inventory'][:n]
+        initial_state = loaded_network['initial_state'][:n]
+        print(f"Uniform Spatial Network with {n} nodes and kappa = {kappa}")
+        MC_param_file = 'Uniform_MC_parameters.npz'
+        GATE_est_file = 'Uniform_true_GATE.csv'
+    elif network == 'Hotel':
+        kappa = 0.035
+        loaded_network = np.load('hotel_network.npz')
+        coords_array = loaded_network['coords_array']
+        max_inventory = loaded_network['max_inventory']
+        initial_state = loaded_network['initial_state']
+        print(f"Hotel Network with kappa = {kappa}")
+        MC_param_file = 'Hotel_MC_parameters.npz'
+        GATE_est_file = 'Hotel_true_GATE.csv'
+    else:
+        print("Error, network must be either Hotel or Uniform dataset")
+        return
 
-    # # (coords_array, max_inventory) = simulation_setup.setup_Hotel_Dataset('Hotels.csv', 10)
-    # # initial_state = (np.random.random(max_inventory.shape) * max_inventory).astype(int)
-    # # np.savez('hotel_network.npz', coords_array=coords_array, max_inventory = max_inventory, initial_state = initial_state)
-    kappa = 0.035
-    loaded_network = np.load('hotel_network.npz')
-    coords_array = loaded_network['coords_array']
-    max_inventory = loaded_network['max_inventory']
-    initial_state = loaded_network['initial_state']
-
-    num_rounds = 10**5
-    num_sims_apx_GATE = 10**4
+    num_rounds = 10**4
+    num_sims_apx_GATE = 10**3
     
     adj_matrix = graph_helpers.build_adjacency_matrix_from_coords(coords_array, kappa)
-    MC_model = simulation_setup.setup_MC_model(adj_matrix, num_rounds, max_inventory, initial_state)
+    # MC_model = simulation_setup.setup_MC_model(adj_matrix, num_rounds, max_inventory, initial_state, save_f = MC_param_file)
+    MC_model = simulation_setup.load_MC_model(adj_matrix, num_rounds, max_inventory, initial_state,MC_param_file)
     results_GATE = MC_model.estimate_GATE(num_sims_apx_GATE)
     true_GATE = results_GATE[0]
     std_dev_GATE = results_GATE[3]
@@ -84,24 +92,25 @@ def main():
     print(f"GATE Estimate: {true_GATE:.4f}")
     print(f"Std Dev: {std_dev_GATE:.4f}")
 
+    rounds = []
+    est_means = []
     for t in range(10):
         truncate = int((t+1)*0.1*num_rounds)
-        print(f"GATE Estimate up to T={truncate}: {np.mean(diff_means[:truncate]):.4f}")
+        rounds.append(truncate)
+        est_means.append(np.mean(diff_means[:truncate]))
+        print(f"GATE Estimate up to T={truncate}: {est_means[-1]:.4f}")
+
+    GATE_est_results = pd.DataFrame()
+    GATE_est_results['T'] = rounds
+    GATE_est_results['true_GATE'] = est_means
+    GATE_est_results.to_csv(GATE_est_file, index=False)
+
+    np.save(run_folder+'/diff_means.npy', diff_means)
 
     # Restore stdout and close temporary log file
     sys.stdout = original_stdout
     logger.close()
     
-    # Create timestamped subfolder
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    run_folder = os.path.join("results", f"run_{timestamp}")
-    os.makedirs(run_folder, exist_ok=True)
-
-    # Move log file to the correct results folder
-    final_log_path = os.path.join(run_folder, "_MC_simulation_log.txt")
-    import shutil
-    shutil.move(temp_log_path, final_log_path)
-
 if __name__ == "__main__":
     try:
         main()
