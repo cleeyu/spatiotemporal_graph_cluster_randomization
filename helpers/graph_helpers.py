@@ -80,7 +80,7 @@ def build_adjacency_matrix_from_coords(
     """ Build adjacency matrix based on distance threshold (WITH self-loops) """
     distance_matrix = cdist(coords_array, coords_array, metric='euclidean')
 
-    return distance_matrix <= kappa
+    return (distance_matrix <= kappa).astype(np.int8)
 
 def spatial_clustering_map(
         coords_array: np.ndarray,
@@ -104,7 +104,7 @@ def spatial_clustering_map(
 
     cluster_map = (np.floor(x_coord / cell_width) * num_cells_per_dim + np.floor(y_coord / cell_width)).astype(int)
     
-    cluster_matrix = np.zeros((n, num_cells_per_dim**2))
+    cluster_matrix = np.zeros((n, num_cells_per_dim**2), dtype=np.int8)
     cluster_matrix[np.arange(n), cluster_map] = 1
     empty_clusters = np.sum(cluster_matrix, axis=0) == 0
     return cluster_matrix[:, ~empty_clusters]

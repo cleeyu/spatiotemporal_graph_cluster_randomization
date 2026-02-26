@@ -48,7 +48,7 @@ def main():
 
     # Create timestamped subfolder
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    run_folder = os.path.join(OUTPUT_DIR, f"run_network__{network}_{timestamp}")
+    run_folder = os.path.join(OUTPUT_DIR, f"run_network_{network}_{timestamp}")
     os.makedirs(run_folder, exist_ok=True)
     print(f"Saving data to {run_folder}")
     
@@ -94,7 +94,7 @@ def main():
             print(f'Num_cells_per_dim: {ncpd}')
             cluster_matrix = graph_helpers.spatial_clustering_map(coords_array, ncpd)
             print(f'Total number of clusters: {cluster_matrix.shape[1]}')
-            neighb_clusters = (np.matmul(adj_matrix,cluster_matrix) > 0).astype(int)
+            neighb_clusters = (np.matmul(adj_matrix,cluster_matrix) > 0).astype(np.int8)
             print(f'Average number of neighboring clusters: {np.mean(np.sum(neighb_clusters,axis=1)):.2f}')
             print(f'Std dev number of neighboring clusters: {np.std(np.sum(neighb_clusters,axis=1)):.2f}')
             stats.append([k,ncpd,np.mean(np.sum(adj_matrix,axis=1)),np.std(np.sum(adj_matrix,axis=1)),cluster_matrix.shape[1],np.mean(np.sum(neighb_clusters,axis=1)),np.std(np.sum(neighb_clusters,axis=1))])

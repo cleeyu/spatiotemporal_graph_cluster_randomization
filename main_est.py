@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+""" Simulations for Clustered Switchback Experiments. Converted from JuNo to Py script """
+import time, importlib, sys, os
+import pickle
+import pandas as pd
+import numpy as np
+from datetime import datetime
+from scipy import stats
+import matplotlib.pyplot as plt
+from joblib import Parallel, delayed
+import gc
+
+# Print and save
+OUTPUT_DIR = "results"         # Directory to save results
+
+# ================================================================================
+# Class for saving
+# ================================================================================
+
+class LogToFile:
+    """Simple class to capture stdout to both console and log file"""
+    def __init__(self, log_file):
+        self.terminal = sys.stdout
+        self.log = open(log_file, 'w')
+    
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+        self.log.flush()  # Ensure immediate write to file
+    
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+    
+    def close(self):
+        self.log.close()
+
+# Set up dir
+current_dir = os.getcwd()
+print("current dir:", current_dir)
+parent_dir = os.path.dirname(current_dir)
+sys.path.append(parent_dir)
+
+from helpers import utils, graph_helpers, mdp_helpers, stats_helpers, print_nicely, simulation_setup
+
+# ================================================================================
+# MAIN SIMULATION CODE
+# ================================================================================
+
+def main():
+    if len(sys.argv) > 1:
+        network = sys.argv[1] # 'Hotel' or 'Uniform'
+        data_folder_time = sys.argv[2] # e.g. '20260225_090411'
+        num_cells_per_dim = [int(sys.argv[3])]
+    else:
+        print("Need to specify network")
+
+    # Create timestamped subfolder
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    run_folder = os.path.join(OUTPUT_DIR, f"run_est_{network}_{timestamp}")
+    os.makedirs(run_folder, exist_ok=True)
+    print(f"Saving data to {run_folder}")
+    
+    log_path = os.path.join(run_folder, "_simulation_log.txt")
+    logger = LogToFile(log_path)
+    original_stdout = sys.stdout
+    sys.stdout = logger
+
+    if network == 'Uniform':
+        n = 100
+        kappa = 0.2 # kappa = [0.1, 0.15, 0.2, 0.25, 0.3] 
+        # num_cells_per_dim = [6] #[4,6,8,10,15]
+        loaded_network = np.load('unifom_spatial_network.npz')
+        coords_array = loaded_network['coords_array'][:n,:]
+        print(f"Uniform Spatial Network with {n} nodes and kappa = {kappa}")
+        GATE_est_file = 'Uniform_true_GATE.csv'
+    elif network == 'Hotel':
+        kappa = 0.035
+        # num_cells_per_dim = [30] #[10,20,30,40,50,60,70]
+        loaded_network = np.load('hotel_network.npz')
+        coords_array = loaded_network['coords_array']
+        print(f"Hotel Network with kappa = {kappa}")
+        GATE_est_file = 'Hotel_true_GATE.csv'
+    else:
+        print("Error, network must be either Hotel or Uniform dataset")
+        return
+
+    adj_matrix = graph_helpers.build_adjacency_matrix_from_coords(coords_array, kappa)
+
+    recency = [10,20,40,80] # [10] # 
+    delta = [0,0.1,0.2,0.3] # [0.2] # [0.1,0.2,0.3] #,
+    burn_in = [5,10,15] # [2,4,6,8,10,12,14,16,18]
+    
+    start_time = time.time()
+
+    print("\nLoad Data and Compute estimates")
+    GATE_est = pd.read_csv(GATE_est_file)
+
+    time_block_length = [20,40,60,80,100]
+
+    for ncpd in num_cells_per_dim:
+        for tbl in time_block_length:
+            print(f'Load data for num_cells_per_dim = {ncpd}, time_block_length = {tbl}')
+
+            data = (ncpd,tbl,np.load(f'results/run_expt_{network}_{data_folder_time}/arms_array_{ncpd}_{tbl}.npy').astype(np.uint8),np.load(f'results/run_expt_{network}_{data_folder_time}/rewards_{ncpd}_{tbl}.npy').astype(np.float32))
+
+            print('Data loaded')
+            total_runtime_seconds = time.time() - start_time
+            print(f"Elapsed time: {total_runtime_seconds:.2f} seconds ({total_runtime_seconds/60:.2f} minutes)")
+
+            all_results = pd.DataFrame()
+            # Compute estimates
+            print("\nCompute estimates")
+            parameter_data_combo = [(r,d) for r in recency for d in delta]
+            HT_Hajek_results = Parallel(n_jobs=5)(
+                delayed(simulation_setup.compute_HT_Hajek_estimates)(r,d,data,adj_matrix) for r,d in parameter_data_combo
+            )
+            all_results = pd.concat(HT_Hajek_results, join='outer', ignore_index=True)
+
+            DM_results = simulation_setup.compute_DM_estimates(burn_in,data)
+            all_results = pd.concat([all_results,DM_results],axis=0, join='outer', ignore_index=True)
+
+            all_results['kappa'] = kappa
+            all_results = pd.merge(all_results, GATE_est, on='T', how='left')
+
+            simulation_setup.print_logs(all_results)
+            save_estimates_f = run_folder+f'/{network}_estimates_{ncpd}_{tbl}.csv'
+            all_results.to_csv(save_estimates_f)
+            
+            del data
+            del all_results
+            gc.collect()             
+            
+            total_runtime_seconds = time.time() - start_time
+            print(f"Elapsed time: {total_runtime_seconds:.2f} seconds ({total_runtime_seconds/60:.2f} minutes)")
+
+    # Restore stdout and close temporary log file
+    sys.stdout = original_stdout
+    logger.close()
+    
+
+if __name__ == "__main__":
+    try:
+        main()
+        
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        raise

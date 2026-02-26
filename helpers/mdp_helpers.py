@@ -42,9 +42,9 @@ class InventoryMarkovChain:
 
         if initial_state.shape != (self.num_nodes,):
             print("Invalid state vector shape ",str(initial_state.shape),", should be (num_nodes,) starting all states at zero")
-            self.initial_state = np.zeros((self.num_nodes))
+            self.initial_state = np.zeros((self.num_nodes), dtype=np.int16)
         else:
-            self.initial_state = initial_state
+            self.initial_state = initial_state.astype(np.int16)
 
         self.true_GATE_info = None
     
@@ -72,8 +72,8 @@ class InventoryMarkovChain:
     # sim_config['initial_state'] * np.ones((sim_config['n']))
     def estimate_GATE(self, num_iterations = 1000):
         if self.true_GATE_info == None:
-            sim_results_0 = self.simulate_MC(np.zeros((self.num_nodes, self.num_rounds, num_iterations)), use_sigmoid=True)
-            sim_results_1 = self.simulate_MC(np.ones((self.num_nodes, self.num_rounds,num_iterations)), use_sigmoid=True)
+            sim_results_0 = self.simulate_MC(np.zeros((self.num_nodes, self.num_rounds, num_iterations),dtype=np.int8), use_sigmoid=True)
+            sim_results_1 = self.simulate_MC(np.ones((self.num_nodes, self.num_rounds,num_iterations),dtype=np.int8), use_sigmoid=True)
 
             all_0_mean = np.mean(sim_results_0["rewards"])
             all_1_mean = np.mean(sim_results_1["rewards"])
@@ -93,7 +93,7 @@ class InventoryMarkovChain:
         P_it = self.compute_move_up(treatment_tensor, use_sigmoid)
         num_sims = P_it.shape[2]
         
-        state_vector = np.outer(self.initial_state, np.ones((num_sims)))
+        state_vector = np.outer(self.initial_state, np.ones((num_sims),dtype=np.int16))
 
         not_lazy_mask = (np.random.rand(self.num_nodes, self.num_rounds, num_sims) >= self.laziness_array[:,:,np.newaxis]).astype(int)
         move_up_mask = (np.random.rand(self.num_nodes, self.num_rounds, num_sims) <= P_it).astype(int)
@@ -105,4 +105,4 @@ class InventoryMarkovChain:
             state_trajectory[:, current_time, :] = state_vector
 
         rewards = self.compute_reward_trajectory(state_trajectory)
-        return {"state_trajectory": state_trajectory, "rewards":rewards}
+        return {"state_trajectory": state_trajectory, "rewards":rewards.astype(np.float32)}

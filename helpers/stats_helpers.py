@@ -27,7 +27,7 @@ def generate_cluster_treatments(
     (n,n_c) = cluster_matrix.shape
     (T,T_c) = time_cluster_matrix.shape
     treatment_probs = p_treat * np.ones((n_c,T_c,num_W))
-    cluster_treatment = (np.random.rand(n_c,T_c,num_W) >= treatment_probs).astype(int)
+    cluster_treatment = (np.random.rand(n_c,T_c,num_W) >= treatment_probs).astype(np.uint8)
     return np.transpose(np.tensordot(np.tensordot(cluster_matrix, cluster_treatment, axes=([1],[0])), time_cluster_matrix.T, axes=([1],[0])), axes=(0, 2, 1))
 
 # =============================================================================
