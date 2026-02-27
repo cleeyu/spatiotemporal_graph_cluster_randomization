@@ -50,14 +50,13 @@ from helpers import utils, graph_helpers, mdp_helpers, stats_helpers, print_nice
 def main():
     if len(sys.argv) > 1:
         network = sys.argv[1] # 'Hotel' or 'Uniform'
-        data_folder_time = sys.argv[2] # e.g. '20260225_090411'
-        num_cells_per_dim = [int(sys.argv[3])]
+        expt_type = sys.argv[2] # e.g. 'switchback'
     else:
         print("Need to specify network")
 
     # Create timestamped subfolder
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    run_folder = os.path.join(OUTPUT_DIR, f"run_est_{network}_{timestamp}")
+    run_folder = os.path.join(OUTPUT_DIR, f"run_estDM_{network}_{expt_type}_{timestamp}")
     os.makedirs(run_folder, exist_ok=True)
     print(f"Saving data to {run_folder}")
     
@@ -70,6 +69,7 @@ def main():
         n = 100
         kappa = 0.2 # kappa = [0.1, 0.15, 0.2, 0.25, 0.3] 
         # num_cells_per_dim = [6] #[4,6,8,10,15]
+        num_cells_per_dim = [1,2,4,6,8,10,15,20,25,30]
         loaded_network = np.load('unifom_spatial_network.npz')
         coords_array = loaded_network['coords_array'][:n,:]
         print(f"Uniform Spatial Network with {n} nodes and kappa = {kappa}")
@@ -77,6 +77,7 @@ def main():
     elif network == 'Hotel':
         kappa = 0.035
         # num_cells_per_dim = [30] #[10,20,30,40,50,60,70]
+        num_cells_per_dim = [1,5,10,20,30,40,50,60,70,80,90]
         loaded_network = np.load('hotel_network.npz')
         coords_array = loaded_network['coords_array']
         print(f"Hotel Network with kappa = {kappa}")
@@ -89,50 +90,59 @@ def main():
 
     recency = [10,20,40,80] # [10] # 
     delta = [0,0.1,0.2,0.3] # [0.2] # [0.1,0.2,0.3] #,
-    burn_in = [5,10,15] # [2,4,6,8,10,12,14,16,18]
+    burn_in = [5,10,15,20,40,60,80,100,200,400,600,800,1000,2000] # [2,4,6,8,10,12,14,16,18]
     
     start_time = time.time()
 
     print("\nLoad Data and Compute estimates")
     GATE_est = pd.read_csv(GATE_est_file)
 
-    time_block_length = [20,40,60,80,100]
+    # time_block_length = [20,40,60,80,100]
+    time_block_length = [20,40,60,80,100,200,400,600,800,1000,2000,4000,6000,8000,10000]
 
-    for ncpd in num_cells_per_dim:
-        for tbl in time_block_length:
-            print(f'Load data for num_cells_per_dim = {ncpd}, time_block_length = {tbl}')
+    if expt_type == 'switchback':
+        pairs = [(ncpd,tbl) for ncpd in [1] for tbl in time_block_length]
+    elif expt_type == 'clusterRD':
+        pairs = [(ncpd,tbl) for ncpd in num_cells_per_dim for tbl in [10000]]
+    if expt_type == 'spatiotemporal':
+        pairs = [(ncpd,tbl) for ncpd in num_cells_per_dim for tbl in time_block_length]
 
-            data = (ncpd,tbl,np.load(f'results/run_expt_{network}_{data_folder_time}/arms_array_{ncpd}_{tbl}.npy').astype(np.uint8),np.load(f'results/run_expt_{network}_{data_folder_time}/rewards_{ncpd}_{tbl}.npy').astype(np.float32))
+    for ncpd,tbl in pairs:
+        print(f'Load data for num_cells_per_dim = {ncpd}, time_block_length = {tbl}')
 
-            print('Data loaded')
-            total_runtime_seconds = time.time() - start_time
-            print(f"Elapsed time: {total_runtime_seconds:.2f} seconds ({total_runtime_seconds/60:.2f} minutes)")
+        data = (ncpd,tbl,np.load(f'results/run_expt_{network}_{expt_type}/arms_array_{ncpd}_{tbl}.npy').astype(np.uint8),np.load(f'results/run_expt_{network}_{expt_type}/rewards_{ncpd}_{tbl}.npy').astype(np.float32))
 
-            all_results = pd.DataFrame()
-            # Compute estimates
-            print("\nCompute estimates")
-            parameter_data_combo = [(r,d) for r in recency for d in delta]
-            HT_Hajek_results = Parallel(n_jobs=5)(
-                delayed(simulation_setup.compute_HT_Hajek_estimates)(r,d,data,adj_matrix) for r,d in parameter_data_combo
-            )
-            all_results = pd.concat(HT_Hajek_results, join='outer', ignore_index=True)
+        print('Data loaded')
+        total_runtime_seconds = time.time() - start_time
+        print(f"Elapsed time: {total_runtime_seconds:.2f} seconds ({total_runtime_seconds/60:.2f} minutes)")
 
-            DM_results = simulation_setup.compute_DM_estimates(burn_in,data)
-            all_results = pd.concat([all_results,DM_results],axis=0, join='outer', ignore_index=True)
+        all_results = pd.DataFrame()
 
-            all_results['kappa'] = kappa
-            all_results = pd.merge(all_results, GATE_est, on='T', how='left')
+        # # Compute estimates
+        # print("\nCompute HT/Hajek estimates")
+        # parameter_data_combo = [(r,d) for r in recency for d in delta]
+        # HT_Hajek_results = Parallel(n_jobs=5)(
+        #     delayed(simulation_setup.compute_HT_Hajek_estimates)(r,d,data,adj_matrix) for r,d in parameter_data_combo
+        # )
+        # all_results = pd.concat(HT_Hajek_results, join='outer', ignore_index=True)
 
-            simulation_setup.print_logs(all_results)
-            save_estimates_f = run_folder+f'/{network}_estimates_{ncpd}_{tbl}.csv'
-            all_results.to_csv(save_estimates_f)
-            
-            del data
-            del all_results
-            gc.collect()             
-            
-            total_runtime_seconds = time.time() - start_time
-            print(f"Elapsed time: {total_runtime_seconds:.2f} seconds ({total_runtime_seconds/60:.2f} minutes)")
+        print("\nCompute Diff-Means estimates")
+        DM_results = simulation_setup.compute_DM_estimates(burn_in,data)
+        all_results = pd.concat([all_results,DM_results],axis=0, join='outer', ignore_index=True)
+
+        all_results['kappa'] = kappa
+        all_results = pd.merge(all_results, GATE_est, on='T', how='left')
+
+        simulation_setup.print_logs(all_results)
+        save_estimates_f = run_folder+f'/{network}_estimates_{ncpd}_{tbl}.csv'
+        all_results.to_csv(save_estimates_f)
+        
+        del data
+        del all_results
+        gc.collect()             
+        
+        total_runtime_seconds = time.time() - start_time
+        print(f"Elapsed time: {total_runtime_seconds:.2f} seconds ({total_runtime_seconds/60:.2f} minutes)")
 
     # Restore stdout and close temporary log file
     sys.stdout = original_stdout

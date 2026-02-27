@@ -244,13 +244,14 @@ def compute_DM_estimates(burn_in, data,truncate = None):
 
     # Diff in Means with burn in
     for b in burn_in:
-        print(f"Computing Diff-in-Means Estimates with burn-in = {b}")
-        DM_results = stats_helpers.diff_means(rewards,arms_array,time_block_length, b)
-        df_DM = pd.DataFrame(DM_results)
-        df_DM['name'] = f"Diff-Means(burn-in={b})"
-        df_DM['type'] = 'DM'
-        df_DM['burn-in'] = b
-        all_results = pd.concat([all_results,df_DM],axis=0, join='outer', ignore_index=True)
+        if b < time_block_length:
+            print(f"Computing Diff-in-Means Estimates with burn-in = {b}")
+            DM_results = stats_helpers.diff_means(rewards,arms_array,time_block_length, b)
+            df_DM = pd.DataFrame(DM_results)
+            df_DM['name'] = f"Diff-Means(burn-in={b})"
+            df_DM['type'] = 'DM'
+            df_DM['burn-in'] = b
+            all_results = pd.concat([all_results,df_DM],axis=0, join='outer', ignore_index=True)
 
     all_results['n'] = rewards.shape[0]
     all_results['T'] = rewards.shape[1]
