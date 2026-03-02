@@ -56,7 +56,7 @@ def main():
 
     # Create timestamped subfolder
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    run_folder = os.path.join(OUTPUT_DIR, f"run_estDM_{network}_{expt_type}_{timestamp}")
+    run_folder = os.path.join(OUTPUT_DIR, f"run_est_{network}_{expt_type}_{timestamp}")
     os.makedirs(run_folder, exist_ok=True)
     print(f"Saving data to {run_folder}")
     
@@ -68,16 +68,18 @@ def main():
     if network == 'Uniform':
         n = 100
         kappa = 0.2 # kappa = [0.1, 0.15, 0.2, 0.25, 0.3] 
-        # num_cells_per_dim = [6] #[4,6,8,10,15]
-        num_cells_per_dim = [1,2,4,6,8,10,15,20,25,30]
+        num_cells_per_dim = [1,2,3,4,5,6,8,10,15]
+        # 1/(2*kappa) = 2.5
+        num_cells_per_dim = [25,30]
         loaded_network = np.load('unifom_spatial_network.npz')
         coords_array = loaded_network['coords_array'][:n,:]
         print(f"Uniform Spatial Network with {n} nodes and kappa = {kappa}")
         GATE_est_file = 'Uniform_true_GATE.csv'
     elif network == 'Hotel':
         kappa = 0.035
-        # num_cells_per_dim = [30] #[10,20,30,40,50,60,70]
-        num_cells_per_dim = [1,5,10,20,30,40,50,60,70,80,90]
+        num_cells_per_dim = [5,10,12,14,16,18,20,30]
+        # 1/(2*kappa) = 14
+        num_cells_per_dim = [10,20,30,40,50,60,70]
         loaded_network = np.load('hotel_network.npz')
         coords_array = loaded_network['coords_array']
         print(f"Hotel Network with kappa = {kappa}")
@@ -87,18 +89,22 @@ def main():
         return
 
     adj_matrix = graph_helpers.build_adjacency_matrix_from_coords(coords_array, kappa)
-
-    recency = [10,20,40,80] # [10] # 
-    delta = [0,0.1,0.2,0.3] # [0.2] # [0.1,0.2,0.3] #,
-    burn_in = [5,10,15,20,40,60,80,100,200,400,600,800,1000,2000] # [2,4,6,8,10,12,14,16,18]
     
     start_time = time.time()
 
     print("\nLoad Data and Compute estimates")
     GATE_est = pd.read_csv(GATE_est_file)
 
-    # time_block_length = [20,40,60,80,100]
-    time_block_length = [20,40,60,80,100,200,400,600,800,1000,2000,4000,6000,8000,10000]
+    delta = [0.2] # [0,0.1,0.2,0.3]
+    time_block_length = [20,40,60,80,100,200,400,600,800,1000]
+    
+    parameter_type = 'fraction'
+    if parameter_type == 'fraction':
+        recency = np.ceil(tbl*np.array([0.25,0.5,1,1.5,2]))
+        burn_in = np.ceil(tbl*np.array([0,0.1,0.3,0.5]))
+    else:
+        recency = [5,10,15,20,40,80,120,160,200]
+        burn_in = [0,5,10,15,20,40,60,80,100,200,400,600,800,1000,2000]
 
     if expt_type == 'switchback':
         pairs = [(ncpd,tbl) for ncpd in [1] for tbl in time_block_length]
@@ -110,7 +116,7 @@ def main():
     for ncpd,tbl in pairs:
         print(f'Load data for num_cells_per_dim = {ncpd}, time_block_length = {tbl}')
 
-        data = (ncpd,tbl,np.load(f'results/run_expt_{network}_{expt_type}/arms_array_{ncpd}_{tbl}.npy').astype(np.uint8),np.load(f'results/run_expt_{network}_{expt_type}/rewards_{ncpd}_{tbl}.npy').astype(np.float32))
+        data = (ncpd,tbl,np.load(f'results/run_expt_{network}_{expt_type}/arms_array_{ncpd}_{tbl}.npy').astype(np.uint8),np.load(f'results/run_expt_{network}_{expt_type}_new/rewards_{ncpd}_{tbl}.npy').astype(np.float32))
 
         print('Data loaded')
         total_runtime_seconds = time.time() - start_time
@@ -118,18 +124,21 @@ def main():
 
         all_results = pd.DataFrame()
 
-        # # Compute estimates
-        # print("\nCompute HT/Hajek estimates")
-        # parameter_data_combo = [(r,d) for r in recency for d in delta]
-        # HT_Hajek_results = Parallel(n_jobs=5)(
-        #     delayed(simulation_setup.compute_HT_Hajek_estimates)(r,d,data,adj_matrix) for r,d in parameter_data_combo
-        # )
-        # all_results = pd.concat(HT_Hajek_results, join='outer', ignore_index=True)
+        # Compute estimates
+        print("\nCompute HT/Hajek estimates")
+        parameter_data_combo = [(r,d) for r in recency for d in delta]
+        HT_Hajek_results = Parallel(n_jobs=5)(
+            delayed(simulation_setup.compute_HT_Hajek_estimates)(r,d,data,adj_matrix) for r,d in parameter_data_combo
+        )
+        all_results = pd.concat(HT_Hajek_results, join='outer', ignore_index=True)
 
         print("\nCompute Diff-Means estimates")
         DM_results = simulation_setup.compute_DM_estimates(burn_in,data)
         all_results = pd.concat([all_results,DM_results],axis=0, join='outer', ignore_index=True)
-
+        
+        if expt_type == 'spatiotemporal':
+            all_results['frac_param'] = 'yes'
+            
         all_results['kappa'] = kappa
         all_results = pd.merge(all_results, GATE_est, on='T', how='left')
 

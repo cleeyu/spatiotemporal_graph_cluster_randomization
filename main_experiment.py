@@ -67,8 +67,8 @@ def main():
     if network == 'Uniform':
         n = 100
         kappa = 0.2 # kappa = [0.1, 0.15, 0.2, 0.25, 0.3]
-        # num_cells_per_dim = [1] # [4,6,8,10,15]
-        num_cells_per_dim = [2,4,6,8,10,15,20,25,30]
+        num_cells_per_dim = [1,2,3,4,5,6,8,10,15]
+        # 1/(2*kappa) = 2.5
         loaded_network = np.load('unifom_spatial_network.npz')
         coords_array = loaded_network['coords_array'][:n,:]
         max_inventory = loaded_network['max_inventory'][:n]
@@ -77,8 +77,8 @@ def main():
         print(f"Uniform Spatial Network with {n} nodes and kappa = {kappa}")
     elif network == 'Hotel':
         kappa = 0.035
-        # num_cells_per_dim = [1] # [10,20,30,40,50,60,70]
-        num_cells_per_dim = [5,10,20,30,40,50,60,70,80,90]
+        num_cells_per_dim = [5,10,12,14,16,18,20,30]
+        # 1/(2*kappa) = 14
         loaded_network = np.load('hotel_network.npz')
         coords_array = loaded_network['coords_array']
         max_inventory = loaded_network['max_inventory']
@@ -89,12 +89,8 @@ def main():
         print("Error, network must be either Hotel or Uniform dataset")
         return
 
-    if len(sys.argv) > 2:
-        num_cells_per_dim = [int(sys.argv[2])]
-
     num_rounds = 10**4
-    time_block_length = [num_rounds]
-    # time_block_length = [20,40,60,80,100,200,400,600,800,1000,2000,4000,6000,8000,10000]
+
     num_iter_est = 10**3
     print(f'num_rounds = {num_rounds}, num_iter_est = {num_iter_est}')
 
@@ -112,16 +108,18 @@ def main():
     # Sample design and run simulation
     print(f"\nGenerating treatment vectors and running estimator simulation")
 
+    time_block_length = [20,40,60,80,100,200,600,800,1000]
+    pairs = [(ncpd,tbl) for ncpd in num_cells_per_dim for tbl in time_block_length]
+    for ncpd,tbl in pairs:
+        print(f'num_cells_per_dim = {ncpd}, time_block_length = {tbl}')
+        simulation_setup.simulate_experiment(ncpd,tbl,coords_array,num_rounds,MC_model,num_iter_est,save_data_folder = run_folder)
+        total_runtime_seconds = time.time() - start_time
+        print(f"Elapsed time: {total_runtime_seconds:.2f} seconds ({total_runtime_seconds/60:.2f} minutes)")
+    
     # pairs = [(ncpd,tbl) for ncpd in num_cells_per_dim for tbl in time_block_length]
     # Parallel(n_jobs=-1)(
     #     delayed(simulation_setup.simulate_experiment)(ncpd,tbl,coords_array,num_rounds,MC_model,num_iter_est,save_data_folder = run_folder) for ncpd,tbl in pairs
     # )
-    for ncpd in num_cells_per_dim:
-        for tbl in time_block_length:
-            print(f'num_cells_per_dim = {ncpd}, time_block_length = {tbl}')
-            simulation_setup.simulate_experiment(ncpd,tbl,coords_array,num_rounds,MC_model,num_iter_est,save_data_folder = run_folder)
-            total_runtime_seconds = time.time() - start_time
-            print(f"Elapsed time: {total_runtime_seconds:.2f} seconds ({total_runtime_seconds/60:.2f} minutes)")
 
     # Restore stdout and close temporary log file
     sys.stdout = original_stdout

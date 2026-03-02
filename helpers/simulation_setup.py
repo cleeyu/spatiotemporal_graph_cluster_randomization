@@ -7,6 +7,7 @@ from scipy import stats
 import matplotlib.pyplot as plt
 from joblib import Parallel, delayed
 import pickle
+import math
 
 from helpers import utils, graph_helpers, mdp_helpers, stats_helpers, print_nicely
 
@@ -188,7 +189,7 @@ def compute_HT_Hajek_estimates(recency,delta,data,adj_matrix, truncate = None):
         arms_array = arms_array[:,:truncate,:]
     num_rounds = rewards.shape[1]
 
-    time_adj_matrix = np.tril(np.ones((num_rounds,num_rounds)), k=0) - np.tril(np.ones((num_rounds,num_rounds)), k=-(recency + 1))
+    time_adj_matrix = np.tril(np.ones((num_rounds,num_rounds)), k=0) - np.tril(np.ones((num_rounds,num_rounds)), k=-(math.floor(recency) + 1))
     exposure_results = stats_helpers.exposure_mapping(arms_array, adj_matrix, time_adj_matrix, delta)
     propensity_1_array = np.average(exposure_results['exposure_1'], axis=2)
     propensity_0_array = np.average(exposure_results['exposure_0'], axis=2)
@@ -233,6 +234,8 @@ def compute_HT_Hajek_estimates(recency,delta,data,adj_matrix, truncate = None):
 def compute_DM_estimates(burn_in, data,truncate = None):
     start_time = time.time()
     num_cells_per_dim = data[0]
+   
+   
     time_block_length = data[1]
     arms_array = data[2]
     rewards = data[3]
